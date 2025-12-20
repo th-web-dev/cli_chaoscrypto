@@ -31,6 +31,7 @@ from chaoscrypto.analysis.runner import (
     write_csv as write_analyze_csv,
     write_json_output as write_analyze_json,
 )
+from chaoscrypto.report.runner import generate_report
 from chaoscrypto.orchestrator.pipeline import (
     build_memory_field,
     derive_initial_state,
@@ -464,6 +465,45 @@ def analyze(
             "json": str(out_json) if out_json else None,
             "variants": len(records),
         }
+        typer.echo(json.dumps(summary))
+
+
+@app.command()
+def report(
+    bench_csv: Path = typer.Option(..., "--bench-csv", exists=True, readable=True, help="Benchmark CSV path"),
+    analysis_csv: Path = typer.Option(..., "--analysis-csv", exists=True, readable=True, help="Analyze CSV path"),
+    out: Path = typer.Option(..., "--out", "-o", help="Output markdown report path"),
+    bench_json: Path | None = typer.Option(None, "--bench-json", help="Optional benchmark JSON path"),
+    analysis_json: Path | None = typer.Option(None, "--analysis-json", help="Optional analysis JSON path"),
+    plots_dir: Path | None = typer.Option(None, "--plots-dir", help="Optional directory for PNG plots"),
+    json_summary: Path | None = typer.Option(None, "--json-summary", help="Write summary JSON to path"),
+    no_timestamp: bool = typer.Option(False, "--no-timestamp", help="Omit timestamp for deterministic reports"),
+    json_flag: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """Generate a markdown report (and optional plots) from benchmark/analyze outputs."""
+    try:
+        summary = generate_report(
+            bench_csv=bench_csv,
+            analysis_csv=analysis_csv,
+            bench_json=bench_json,
+            analysis_json=analysis_json,
+            out_md=out,
+            plots_dir=plots_dir,
+            include_timestamp=not no_timestamp,
+            json_summary=json_summary,
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Report failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    typer.secho(f"Report written → {out}", fg=typer.colors.GREEN)
+    if plots_dir:
+        typer.secho(f"Plots in → {plots_dir}", fg=typer.colors.GREEN)
+    if json_summary:
+        typer.secho(f"Summary JSON → {json_summary}", fg=typer.colors.GREEN)
+    if json_flag:
+        import json
+
         typer.echo(json.dumps(summary))
 
 

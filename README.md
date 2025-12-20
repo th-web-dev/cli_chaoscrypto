@@ -60,6 +60,10 @@ Kernschritte:
      ```bash
      .venv/bin/python -m chaoscrypto.cli.app analyze --config examples/analyze.yaml --out analysis.csv --out-json analysis.json
      ```
+   - Report (Markdown + optional Plots/JSON) aus Benchmark/Analyze-Outputs:
+     ```bash
+     .venv/bin/python -m chaoscrypto.cli.app report --bench-csv results.csv --analysis-csv analysis.csv --out report.md --plots-dir plots
+     ```
 
 5) **Ergebnis prüfen**  
    ```bash
@@ -75,3 +79,4 @@ Kernschritte:
 - `keystream` ist die Grundlage für Benchmark und Analyse und garantiert reproduzierbare Keystreams (identisch zur Encrypt-Pipeline).
 - `benchmark` nutzt eine YAML-Matrix, generiert deterministische Keystreams im RAM, misst Zeiten/Hashes und schreibt CSV/JSON. Token wird nie im Klartext gespeichert (nur Fingerprint).
 - `analyze` baut auf derselben Matrix-Logik auf und berechnet deterministische Keystream-Metriken (Bit-Balance, Histogram/Chi², Autocorr, Runs, Hamming-Weights); Outputs CSV/JSON, keine enc.json, Token bleibt verborgen.
+- `report` fasst Benchmark/Analyze-Outputs in Markdown zusammen, kann PNG-Plots erzeugen und bleibt deterministisch (optional ohne Timestamp für Reprotests).
