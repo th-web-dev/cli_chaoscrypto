@@ -1,8 +1,8 @@
 # ChaosCrypto WP2 – Report
 
 ## Inputs
-- Benchmark CSV: `/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/bench/results.csv` (24 variants aggregated)
-- Analyze CSV: `/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/analyze/analysis.csv` (24 variants aggregated)
+- Benchmark CSV: `../bench/results.csv` (24 variants aggregated)
+- Analyze CSV: `../analyze/analysis.csv` (24 variants aggregated)
 - Token: not stored; only fingerprints in source CSV
 
 ## Scope
@@ -23,20 +23,27 @@ Top throughput overall (mean over repeats):
 
 | dt | warmup | quant_k | size | scale | seed_strategy | memory_type | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |
 |---|---|---|---|---|---|---|---|---|---|
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.30106 | 3.48e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.302151 | 3.47e+06 | b8ce10e014ed53eb9dfab2ce1e17997224a1d5923f62c790ec74ea5c0e611b26 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.303892 | 3.45e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
-| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.30717 | 3.41e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.307625 | 3.41e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.301783 | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.303105 | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.306964 | 3.42e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
+| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.309454 | 3.39e+06 | 38dd69fdca01279ca3fc369fda15eee742eb40cf176fed4791c76a8a87ff283e |
+| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.30956 | 3.39e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
 
-Top throughput per seed_strategy:
+Top throughput per seed_strategy (best across memory types):
 
-| seed_strategy | dt | warmup | quant_k | size | scale | memory_type | mean_tp_bps | keystream_sha256 |
+| seed_strategy | dt | warmup | quant_k | memory_type | mean_tp_bps | keystream_sha256 |
+|---|---|---|---|---|---|---|
+| neighborhood3 | 0.01 | 100 | 100000.0 | perlin | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
+| window_mean_3x3 | 0.01 | 100 | 100000.0 | opensimplex | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
+
+Top throughput per seed_strategy and memory_type:
+
+| seed_strategy | memory_type | dt | warmup | quant_k | size | scale | mean_tp_bps | keystream_sha256 |
 |---|---|---|---|---|---|---|---|---|
-| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 3.47e+06 | b8ce10e014ed53eb9dfab2ce1e17997224a1d5923f62c790ec74ea5c0e611b26 |
-| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 3.48e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 3.41e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 3.45e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
+| neighborhood3 | opensimplex | 0.01 | 100 | 10000000.0 | 128 | 0.1 | 3.39e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
+| neighborhood3 | perlin | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
+| window_mean_3x3 | opensimplex | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
+| window_mean_3x3 | perlin | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.42e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
 
 ## Analyze Summary
 - Bit ones ratio min/mean/max: (0.499577, 0.500057, 0.500528)
@@ -83,32 +90,38 @@ Per seed_strategy / memory_type (mean values):
 Top 5 overall:
 | dt | warmup | quant_k | size | scale | seed_strategy | memory_type | score | perf_score | rand_score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.990865 | 0.996841 | 0.986881 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.977960 | 0.964579 | 0.986881 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
 | 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.972765 | 1.000000 | 0.954609 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
-| 0.01 | 5000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.959112 | 0.913690 | 0.989393 | 0.500528 | 0.000152 | -0.000076 | 1.009965 |
-| 0.01 | 1000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.958568 | 0.917210 | 0.986140 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.952099 | 0.990549 | 0.926465 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
+| 0.01 | 1000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.953063 | 0.903447 | 0.986140 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.949127 | 0.983121 | 0.926465 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.942966 | 0.995576 | 0.907892 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
 
 Top 3 per seed_strategy:
 | seed_strategy | dt | warmup | quant_k | size | scale | memory_type | score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.990865 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
+| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.977960 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
 | neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.972765 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
-| neighborhood3 | 0.01 | 5000 | 100000.0 | 128 | 0.1 | opensimplex | 0.959112 | 0.500528 | 0.000152 | -0.000076 | 1.009965 |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.952099 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
-| window_mean_3x3 | 0.01 | 5000 | 100000.0 | 128 | 0.1 | perlin | 0.940700 | 0.500237 | -0.000033 | 0.000017 | 1.056376 |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.936311 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
+| neighborhood3 | 0.01 | 1000 | 100000.0 | 128 | 0.1 | opensimplex | 0.953063 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
+| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.949127 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
+| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.942966 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
+| window_mean_3x3 | 0.01 | 5000 | 100000.0 | 128 | 0.1 | perlin | 0.931392 | 0.500237 | -0.000033 | 0.000017 | 1.056376 |
 
 ## Plots
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/bench/bench_throughput_dt0p01_q100000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/bench/bench_throughput_dt0p01_q10000000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_bit/analyze_bit_balance_dt0p01_q100000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_bit/analyze_bit_balance_dt0p01_q10000000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_autocorr/analyze_autocorr_lag1_dt0p01_q100000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_autocorr/analyze_autocorr_lag1_dt0p01_q10000000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_chi2/analyze_byte_chi2_norm_dt0p01_q100000p0.png)
-![](/mnt/c/Users/tobia/Projects/FH/WP2/out/ba1/report/plots/analyze_chi2/analyze_byte_chi2_norm_dt0p01_q10000000p0.png)
+![](plots/bench/bench_throughput_dt0p01_q100000p0.png)
+![](plots/bench/bench_throughput_dt0p01_q10000000p0.png)
+![](plots/analyze_bit/analyze_bit_balance_dt0p01_q100000p0.png)
+![](plots/analyze_bit/analyze_bit_balance_dt0p01_q10000000p0.png)
+![](plots/analyze_autocorr/analyze_autocorr_lag1_dt0p01_q100000p0.png)
+![](plots/analyze_autocorr/analyze_autocorr_lag1_dt0p01_q10000000p0.png)
+![](plots/analyze_chi2/analyze_byte_chi2_norm_dt0p01_q100000p0.png)
+![](plots/analyze_chi2/analyze_byte_chi2_norm_dt0p01_q10000000p0.png)
 
 ## Appendix
 - CSV columns: benchmark includes timing/throughput; analyze includes keystream statistics.
 - Reproducibility: same config → identical hashes/metrics.
+
+## Methodology Notes
+- Benchmark results are averaged over `repeats` runs (as configured; BA1 kit uses repeats=3).
+- Analyze metrics are deterministic per variant and computed once per variant (no repeats by default).
+- Environment details for the run are stored in `out/ba1/run_meta.txt` (UTC date, python version, uname, pip freeze).
+- Statistical metrics describe properties of the generated keystream for the tested length; they do not prove cryptographic security.
