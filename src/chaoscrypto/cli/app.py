@@ -24,6 +24,13 @@ from chaoscrypto.bench.runner import (
     write_csv,
     write_json_output,
 )
+from chaoscrypto.analysis.runner import (
+    ConfigError as AnalyzeConfigError,
+    parse_config as parse_analyze_config,
+    run_analyze,
+    write_csv as write_analyze_csv,
+    write_json_output as write_analyze_json,
+)
 from chaoscrypto.orchestrator.pipeline import (
     build_memory_field,
     derive_initial_state,
@@ -389,6 +396,65 @@ def benchmark(
     if out_json:
         typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
 
+    if json_summary:
+        import json
+
+        summary = {
+            "runs": len(records),
+            "csv": str(out),
+            "json": str(out_json) if out_json else None,
+            "variants": len(records),
+        }
+        typer.echo(json.dumps(summary))
+
+
+@app.command()
+def analyze(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out: Path = typer.Option(..., "--out", "-o", help="CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Analyze keystream statistics based on a YAML config (matrix-driven).
+    """
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    if not profile_exists(cfg.analyze.profile):
+        typer.secho(f"Profile '{cfg.analyze.profile}' not found. Run init first.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    profile_meta = load_profile_meta(cfg.analyze.profile)
+    profile_params = memory_params_from_meta(profile_meta)
+    if any(val != profile_params.size for val in cfg.matrix.size):
+        typer.secho("Matrix size values must match the profile size.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if any(val != profile_params.scale for val in cfg.matrix.scale):
+        typer.secho("Matrix scale values must match the profile scale.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        records = run_analyze(cfg, jobs=jobs)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Analyze failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    max_autocorr = cfg.metrics.autocorr_bits_max_lag if cfg.metrics.autocorr_bits_enabled else 0
+    try:
+        write_analyze_csv(out, records, max_autocorr=max_autocorr)
+        if out_json:
+            write_analyze_json(out_json, records)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    typer.secho(f"Analyze complete. CSV → {out}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
     if json_summary:
         import json
 
