@@ -1,0 +1,23 @@
+# ChaosCrypto WP2 (CLI)
+
+Deterministic, profile-based CLI for the ChaosCrypto MVP (WP2). Implements a minimal pipeline:
+
+- Token → Memory (deterministic OpenSimplex noise)
+- Seed derivation (Neighborhood3)
+- Lorenz system (Euler)
+- Keystream sampling (quantized x component)
+- XOR encrypt/decrypt
+
+## Usage (short)
+
+```
+python -m chaoscrypto.cli.app init --profile alice --token "secret" --size 128 --scale 0.1
+python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
+python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
+```
+
+Run tests:
+
+```
+make test
+```
