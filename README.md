@@ -42,6 +42,13 @@ Kernschritte:
       .venv/bin/python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
       ```
    - Optional steuerbar: `--dt`, `--warmup`, `--quant-k` bei `encrypt` setzen (werden in `enc.json` gespeichert und bei `decrypt` geprüft).
+   - Seed-Strategien:
+     - `neighborhood3` (Baseline)
+     - `window_mean_3x3` (3x3-Fenstermittelwerte)
+     Beispiel:
+     ```bash
+     .venv/bin/python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json --seed-strategy window_mean_3x3
+     ```
    - Keystream (für Bench/Analyse, deterministisch):
      ```bash
      # SHA-256 Hash (Default-Output)
@@ -80,3 +87,4 @@ Kernschritte:
 - `benchmark` nutzt eine YAML-Matrix, generiert deterministische Keystreams im RAM, misst Zeiten/Hashes und schreibt CSV/JSON. Token wird nie im Klartext gespeichert (nur Fingerprint).
 - `analyze` baut auf derselben Matrix-Logik auf und berechnet deterministische Keystream-Metriken (Bit-Balance, Histogram/Chi², Autocorr, Runs, Hamming-Weights); Outputs CSV/JSON, keine enc.json, Token bleibt verborgen.
 - `report` fasst Benchmark/Analyze-Outputs in Markdown zusammen, kann PNG-Plots erzeugen und bleibt deterministisch (optional ohne Timestamp für Reprotests).
+- Seed-Strategien: `neighborhood3` (Baseline), `window_mean_3x3` (3x3 Fenster-Mittelwerte). YAML-Matrix (`seed_strategy`) und CLI (`--seed-strategy`) wählen die Strategie; `enc.json` speichert die genutzte Strategie.

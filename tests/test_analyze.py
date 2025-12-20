@@ -35,7 +35,7 @@ def test_analyze_smoke(tmp_path, monkeypatch):
     )
     cfg = {
         "analyze": {"profile": "alice", "token": "secret", "coord": [0, 0], "nbytes": 2048},
-        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1]},
+        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3", "window_mean_3x3"]},
         "metrics": {
             "bit_balance": True,
             "byte_histogram": True,
@@ -74,8 +74,8 @@ def test_analyze_smoke(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     assert csv_out.exists()
     lines = csv_out.read_text().splitlines()
-    # header + rows (len(matrix product)=2)
-    assert len(lines) == 1 + 2
+    # header + rows (len(matrix product)= 2 warmup *2 seed =4)
+    assert len(lines) == 1 + 4
 
 
 def test_analyze_determinism_and_variation(tmp_path, monkeypatch):
@@ -98,7 +98,7 @@ def test_analyze_determinism_and_variation(tmp_path, monkeypatch):
 
     base_cfg = {
         "analyze": {"profile": "alice", "token": "secret", "coord": [1, 1], "nbytes": 1024},
-        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1]},
+        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3"]},
         "metrics": {
             "bit_balance": True,
             "byte_histogram": True,
@@ -134,5 +134,10 @@ def test_analyze_determinism_and_variation(tmp_path, monkeypatch):
     rows2 = run_an(base_cfg, Path(tmp_path) / "a2.csv")
     assert rows1[0]["keystream_sha256"] != rows2[0]["keystream_sha256"]
 
+    base_cfg["matrix"]["warmup"] = [100]
+    base_cfg["matrix"]["seed_strategy"] = ["window_mean_3x3"]
+    rows3 = run_an(base_cfg, Path(tmp_path) / "a3.csv")
+    assert rows1[0]["keystream_sha256"] != rows3[0]["keystream_sha256"]
+
     # Sorting stability
-    assert rows1 == sorted(rows1, key=lambda r: (int(r["coord_x"]), int(r["coord_y"]), float(r["dt"]), int(r["warmup"]), float(r["quant_k"]), int(r["size"]), float(r["scale"])))
+    assert rows1 == sorted(rows1, key=lambda r: (int(r["coord_x"]), int(r["coord_y"]), float(r["dt"]), int(r["warmup"]), float(r["quant_k"]), int(r["size"]), float(r["scale"]), r.get("seed_strategy")))

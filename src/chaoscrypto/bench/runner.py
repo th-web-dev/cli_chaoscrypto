@@ -22,6 +22,7 @@ from chaoscrypto.orchestrator.pipeline import (
     derive_initial_state,
     generate_keystream,
 )
+from chaoscrypto.core.seed.base import get_seed_strategy, list_seed_strategies
 
 
 # -------------------------
@@ -46,6 +47,7 @@ class MatrixConfig:
     quant_k: Sequence[float]
     size: Sequence[int]
     scale: Sequence[float]
+    seed_strategy: Sequence[str]
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,7 @@ def parse_config(path: Path) -> FullConfig:
         quant_k=[float(x) for x in _require(matrix, "quant_k", (list, tuple))],
         size=[int(x) for x in matrix.get("size", [constants.DEFAULT_MEMORY_SIZE])],
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
+        seed_strategy=[str(x) for x in matrix.get("seed_strategy", [constants.SEED_STRATEGY])],
     )
 
     metrics_cfg = MetricsConfig(
@@ -159,6 +162,10 @@ def parse_config(path: Path) -> FullConfig:
         assert_deterministic_within_run=bool(validate.get("assert_deterministic_within_run", True)),
         extra_determinism_check=bool(validate.get("extra_determinism_check", False)),
     )
+
+    for name in matrix_cfg.seed_strategy:
+        if name not in list_seed_strategies():
+            raise ConfigError(f"Unknown seed_strategy '{name}'. Available: {list_seed_strategies()}")
 
     return FullConfig(
         bench=bench_cfg,
@@ -208,6 +215,7 @@ def _keystream_and_metrics(
     preview_len: int,
     precomputed_field: Tuple[np.ndarray, str] | None = None,
     precomputed_field_time: float | None = None,
+    seed_strategy: str = constants.SEED_STRATEGY,
 ) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
 
@@ -225,7 +233,7 @@ def _keystream_and_metrics(
 
     # Seed / Keystream
     def gen_ks():
-        init_state = derive_initial_state(field, coord)
+        init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
         return generate_keystream(
             num_bytes=nbytes,
             init_state=init_state,
@@ -239,7 +247,7 @@ def _keystream_and_metrics(
     if assert_deterministic:
         ks2 = generate_keystream(
             num_bytes=nbytes,
-            init_state=derive_initial_state(field, coord),
+            init_state=derive_initial_state(field, coord, seed_strategy=seed_strategy),
             dt=dt,
             warmup=warmup,
             quant_k=quant_k,
@@ -285,8 +293,8 @@ def _keystream_and_metrics(
 
 def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
     combos = []
-    for dt, warmup, quant_k, size, scale in itertools.product(
-        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale
+    for dt, warmup, quant_k, size, scale, seed_strategy in itertools.product(
+        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy
     ):
         combos.append(
             {
@@ -295,6 +303,7 @@ def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
                 "quant_k": float(quant_k),
                 "size": int(size),
                 "scale": float(scale),
+                "seed_strategy": str(seed_strategy),
             }
         )
     return combos
@@ -329,6 +338,10 @@ def _run_single_variant(
         precomputed_field = (field, field_fp)
         precomputed_time = measured
 
+    # Validate seed strategy
+    if variant["seed_strategy"] not in list_seed_strategies():
+        raise ConfigError(f"Unknown seed_strategy '{variant['seed_strategy']}'. Available: {list_seed_strategies()}")
+
     ks_metrics = _keystream_and_metrics(
         params=params,
         token_bytes=token_bytes,
@@ -347,6 +360,7 @@ def _run_single_variant(
         preview_len=output.keystream_preview_bytes,
         precomputed_field=precomputed_field,
         precomputed_field_time=precomputed_time,
+        seed_strategy=variant["seed_strategy"],
     )
 
     record: Dict[str, Any] = {
@@ -361,6 +375,7 @@ def _run_single_variant(
         "quant_k": variant["quant_k"],
         "size": variant["size"],
         "scale": variant["scale"],
+        "seed_strategy": variant["seed_strategy"],
         "keystream_sha256": ks_metrics["keystream_sha256"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp if output.include_field_fingerprint else None,
@@ -409,6 +424,7 @@ def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["quant_k"],
             rec["size"],
             rec["scale"],
+            rec.get("seed_strategy"),
             rec["repeat_index"],
         )
 
@@ -434,6 +450,7 @@ CSV_FIELDS = [
     "quant_k",
     "size",
     "scale",
+    "seed_strategy",
     "t_field_s",
     "t_keystream_s",
     "t_xor_s",

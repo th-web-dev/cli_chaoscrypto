@@ -10,6 +10,7 @@ matrix:
   quant_k: [100000.0]
   size: [128]
   scale: [0.1]
+  seed_strategy: ["neighborhood3", "window_mean_3x3"]
 
 metrics:
   bit_balance: true

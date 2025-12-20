@@ -47,7 +47,7 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
             "repeats": 2,
             "field_regen_each_repeat": True,
         },
-        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1]},
+        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3", "window_mean_3x3"]},
         "metrics": {
             "include_field_time": False,
             "include_xor_time": False,
@@ -84,11 +84,11 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
     assert csv_out.exists()
 
     lines = csv_out.read_text().strip().splitlines()
-    # header + rows; rows = len(matrix product) * repeats = 2 * 2 = 4
-    assert len(lines) == 1 + 4
+    # header + rows; rows = len(matrix product) * repeats = (2 warmup *2 seed)=4 *2 repeats =8
+    assert len(lines) == 1 + 8
 
     data = json.loads(json_out.read_text())
-    assert len(data) == 4
+    assert len(data) == 8
 
 
 def test_benchmark_determinism_and_variation(tmp_path, monkeypatch):
@@ -119,7 +119,7 @@ def test_benchmark_determinism_and_variation(tmp_path, monkeypatch):
             "repeats": 1,
             "field_regen_each_repeat": True,
         },
-        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1]},
+        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3"]},
         "metrics": {
             "include_field_time": False,
             "include_xor_time": False,
@@ -163,3 +163,15 @@ def test_benchmark_determinism_and_variation(tmp_path, monkeypatch):
     with csv2.open() as f:
         rows2 = list(csv.DictReader(f))
     assert rows1[0]["keystream_sha256"] != rows2[0]["keystream_sha256"]
+
+    # variation seed_strategy -> hash should differ
+    cfg_base["matrix"]["warmup"] = [100]
+    cfg_base["matrix"]["seed_strategy"] = ["window_mean_3x3"]
+    cfg_path3 = Path(tmp_path) / "bench3.yaml"
+    cfg_path3.write_text(yaml.safe_dump(cfg_base), encoding="utf-8")
+    csv3 = Path(tmp_path) / "out3.csv"
+    res3 = runner.invoke(app, ["benchmark", "--config", str(cfg_path3), "--out", str(csv3)])
+    assert res3.exit_code == 0, res3.output
+    with csv3.open() as f:
+        rows3 = list(csv.DictReader(f))
+    assert rows1[0]["keystream_sha256"] != rows3[0]["keystream_sha256"]

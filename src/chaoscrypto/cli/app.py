@@ -32,6 +32,7 @@ from chaoscrypto.analysis.runner import (
     write_json_output as write_analyze_json,
 )
 from chaoscrypto.report.runner import generate_report
+from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
     build_memory_field,
     derive_initial_state,
@@ -98,6 +99,7 @@ def encrypt(
     dt: float = typer.Option(constants.DEFAULT_DT, help="Time step for Lorenz integration"),
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
+    seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
 ):
     """Encrypt a plaintext file to enc.json with full reproduction metadata."""
     if not profile_exists(profile):
@@ -115,11 +117,16 @@ def encrypt(
         raise typer.Exit(code=1)
 
     plaintext = input_path.read_bytes()
+    if seed_strategy not in list_seed_strategies():
+        typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
     ciphertext, computed_fp = encrypt_bytes(
         plaintext,
         token_bytes=token_bytes,
         coord=coord_tuple,
         params=params,
+        seed_strategy=seed_strategy,
         dt=dt,
         warmup=warmup,
         quant_k=quant_k,
@@ -130,7 +137,7 @@ def encrypt(
         "version": constants.VERSION,
         "cipher": "lorenz",
         "memory": {"type": params.type, "size": params.size, "scale": params.scale},
-        "seed_strategy": constants.SEED_STRATEGY,
+        "seed_strategy": {"name": seed_strategy, "params": {}},
         "sampling": {
             "type": constants.SAMPLING_TYPE,
             "warmup": warmup,
@@ -189,6 +196,15 @@ def decrypt(
     warmup = int(sampling_meta.get("warmup", constants.DEFAULT_WARMUP))
     quant_k = float(sampling_meta.get("quant_k", constants.DEFAULT_QUANT_K))
 
+    seed_meta = enc_payload.get("seed_strategy")
+    if isinstance(seed_meta, dict):
+        seed_strategy = seed_meta.get("name", constants.SEED_STRATEGY)
+    else:
+        seed_strategy = enc_payload.get("seed_strategy", constants.SEED_STRATEGY)
+    if seed_strategy not in list_seed_strategies():
+        typer.secho(f"Unknown seed strategy '{seed_strategy}' in enc.json.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
     ciphertext = decode_ciphertext(enc_payload["ciphertext"])
     try:
         plaintext = decrypt_bytes(
@@ -197,6 +213,7 @@ def decrypt(
             coord=coord_tuple,
             params=params,
             expected_fingerprint=expected_fp,
+            seed_strategy=seed_strategy,
             dt=dt,
             warmup=warmup,
             quant_k=quant_k,
@@ -219,6 +236,7 @@ def keystream(
     dt: float = typer.Option(constants.DEFAULT_DT, help="Time step for Lorenz integration"),
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
+    seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write raw keystream bytes to file"),
     hex_out: bool = typer.Option(False, "--hex", help="Write hex to stdout"),
     base64_out: bool = typer.Option(False, "--base64", help="Write base64 to stdout"),
@@ -253,12 +271,16 @@ def keystream(
     token_bytes = token.encode(constants.ENCODING)
     coord_tuple = parse_coord(coord)
 
+    if seed_strategy not in list_seed_strategies():
+        typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
     field, field_fp = build_memory_field(token_bytes, params)
     if field_fp != meta["field_fingerprint"]:
         typer.secho("Token or parameters mismatch (field fingerprint differs).", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    init_state = derive_initial_state(field, coord_tuple)
+    init_state = derive_initial_state(field, coord_tuple, seed_strategy=seed_strategy)
     ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
 
     if out:
@@ -324,6 +346,7 @@ def selftest():
         token_bytes=token,
         coord=coord,
         params=params,
+        seed_strategy=constants.SEED_STRATEGY,
         dt=constants.DEFAULT_DT,
         warmup=constants.DEFAULT_WARMUP,
         quant_k=constants.DEFAULT_QUANT_K,
@@ -334,6 +357,7 @@ def selftest():
         coord=coord,
         params=params,
         expected_fingerprint=field_fp,
+        seed_strategy=constants.SEED_STRATEGY,
         dt=constants.DEFAULT_DT,
         warmup=constants.DEFAULT_WARMUP,
         quant_k=constants.DEFAULT_QUANT_K,

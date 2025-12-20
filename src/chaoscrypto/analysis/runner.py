@@ -21,6 +21,8 @@ from chaoscrypto.orchestrator.pipeline import (
     derive_initial_state,
     generate_keystream,
 )
+from chaoscrypto.core.seed.base import list_seed_strategies
+from chaoscrypto.core.seed.base import list_seed_strategies
 
 
 class ConfigError(Exception):
@@ -42,6 +44,7 @@ class MatrixConfig:
     quant_k: Sequence[float]
     size: Sequence[int]
     scale: Sequence[float]
+    seed_strategy: Sequence[str]
 
 
 @dataclass(frozen=True)
@@ -128,6 +131,7 @@ def parse_config(path: Path) -> FullConfig:
         quant_k=[float(x) for x in _require(matrix, "quant_k", (list, tuple))],
         size=[int(x) for x in matrix.get("size", [constants.DEFAULT_MEMORY_SIZE])],
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
+        seed_strategy=[str(x) for x in matrix.get("seed_strategy", [constants.SEED_STRATEGY])],
     )
 
     autocorr = metrics.get("autocorr_bits", {})
@@ -164,6 +168,10 @@ def parse_config(path: Path) -> FullConfig:
         assert_deterministic_within_run=bool(validate.get("assert_deterministic_within_run", True))
     )
 
+    for name in matrix_cfg.seed_strategy:
+        if name not in list_seed_strategies():
+            raise ConfigError(f"Unknown seed_strategy '{name}'. Available: {list_seed_strategies()}")
+
     return FullConfig(
         analyze=analyze_cfg,
         matrix=matrix_cfg,
@@ -176,8 +184,8 @@ def parse_config(path: Path) -> FullConfig:
 def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> List[Dict[str, Any]]:
     combos = []
     for coord in coords:
-        for dt, warmup, quant_k, size, scale in itertools.product(
-            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale
+        for dt, warmup, quant_k, size, scale, seed_strategy in itertools.product(
+            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy
         ):
             combos.append(
                 {
@@ -187,6 +195,7 @@ def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> Lis
                     "quant_k": float(quant_k),
                     "size": int(size),
                     "scale": float(scale),
+                    "seed_strategy": str(seed_strategy),
                 }
             )
     return combos
@@ -281,9 +290,9 @@ def _hamming_weight_window(bits: np.ndarray, window_bits: int) -> Dict[str, Any]
     }
 
 
-def _generate_keystream(params: MemoryParams, coord: Tuple[int, int], nbytes: int, dt: float, warmup: int, quant_k: float, token_bytes: bytes):
+def _generate_keystream(params: MemoryParams, coord: Tuple[int, int], nbytes: int, dt: float, warmup: int, quant_k: float, token_bytes: bytes, seed_strategy: str):
     field, field_fp = build_memory_field(token_bytes, params)
-    init_state = derive_initial_state(field, coord)
+    init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
     ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
     return ks, field_fp
 
@@ -295,6 +304,8 @@ def _analyze_one(
     token_fp: str,
 ) -> Dict[str, Any]:
     params = MemoryParams(type=constants.MEMORY_TYPE, size=variant["size"], scale=variant["scale"])
+    if variant["seed_strategy"] not in list_seed_strategies():
+        raise ConfigError(f"Unknown seed_strategy '{variant['seed_strategy']}'. Available: {list_seed_strategies()}")
     ks, field_fp = _generate_keystream(
         params=params,
         coord=variant["coord"],
@@ -303,6 +314,7 @@ def _analyze_one(
         warmup=variant["warmup"],
         quant_k=variant["quant_k"],
         token_bytes=token_bytes,
+        seed_strategy=variant["seed_strategy"],
     )
 
     if cfg.validate.assert_deterministic_within_run:
@@ -314,6 +326,7 @@ def _analyze_one(
             warmup=variant["warmup"],
             quant_k=variant["quant_k"],
             token_bytes=token_bytes,
+            seed_strategy=variant["seed_strategy"],
         )
         if ks2 != ks:
             raise RuntimeError("Determinism check failed for analyze run.")
@@ -352,6 +365,7 @@ def _analyze_one(
         "quant_k": variant["quant_k"],
         "size": variant["size"],
         "scale": variant["scale"],
+        "seed_strategy": variant["seed_strategy"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp if cfg.output.include_field_fingerprint else None,
         "keystream_sha256": hashlib.sha256(ks).hexdigest() if cfg.output.include_keystream_sha256 else None,
@@ -393,6 +407,7 @@ def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["quant_k"],
             rec["size"],
             rec["scale"],
+            rec.get("seed_strategy"),
         )
 
     records_sorted = sorted(records, key=sort_key)
@@ -410,6 +425,7 @@ CSV_FIELDS_BASE = [
     "quant_k",
     "size",
     "scale",
+    "seed_strategy",
     "keystream_sha256",
     "field_fingerprint",
     "token_fingerprint",
