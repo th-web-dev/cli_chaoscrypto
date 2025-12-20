@@ -1,0 +1,6 @@
+numpy
+typer[all]
+rich
+
+[dev]
+pytest
