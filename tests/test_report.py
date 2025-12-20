@@ -161,6 +161,7 @@ def test_report_smoke(tmp_path):
     assert "# ChaosCrypto WP2 – Report" in content
     assert "Benchmark Summary" in content
     assert "Analyze Summary" in content
+    assert "seed_strategy" in content
 
 
 def test_report_plots(tmp_path):

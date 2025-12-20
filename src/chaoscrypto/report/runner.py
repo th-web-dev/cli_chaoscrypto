@@ -34,6 +34,8 @@ def _read_csv(path: Path) -> List[Dict[str, Any]]:
         reader = csv.DictReader(f)
         rows = []
         for row in reader:
+            if "seed_strategy" not in row or not row.get("seed_strategy"):
+                row["seed_strategy"] = "neighborhood3"
             rows.append(dict(row))
     return rows
 
@@ -68,7 +70,7 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
             _parse_float(r.get("quant_k")),
             _parse_int(r.get("size")),
             _parse_float(r.get("scale")),
-            r.get("seed_strategy"),
+            r.get("seed_strategy") or "neighborhood3",
             _parse_int(r.get("coord_x")),
             _parse_int(r.get("coord_y")),
         )
@@ -126,7 +128,7 @@ def _group_analyze(rows: List[Dict[str, Any]]) -> List[AnalyzeAgg]:
             _parse_float(r.get("quant_k")),
             _parse_int(r.get("size")),
             _parse_float(r.get("scale")),
-            r.get("seed_strategy"),
+            r.get("seed_strategy") or "neighborhood3",
             _parse_int(r.get("coord_x")),
             _parse_int(r.get("coord_y")),
         )
@@ -217,6 +219,7 @@ def _render_markdown(
         lines.append(f"- Profile: {sample.get('profile')}")
         lines.append(f"- Coord: ({sample.get('coord_x')},{sample.get('coord_y')})")
         lines.append(f"- nbytes: {sample.get('nbytes')}")
+        lines.append(f"- Seed strategies: {sorted({a.params.get('seed_strategy','neighborhood3') for a in bench_aggs})}")
         lines.append(f"- Varying parameters:")
         for k, vals in varying.items():
             lines.append(f"  - {k}: {vals}")
@@ -225,7 +228,7 @@ def _render_markdown(
     # Benchmark summary
     lines.append("## Benchmark Summary")
     top_by_tp = sorted(bench_aggs, key=lambda a: a.mean_throughput or 0, reverse=True)[:5]
-    lines.append("Top throughput (mean over repeats):")
+    lines.append("Top throughput overall (mean over repeats):")
     lines.append("")
     lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |")
     lines.append("|---|---|---|---|---|---|---|---|---|")
@@ -233,6 +236,20 @@ def _render_markdown(
         lines.append(
             f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | "
             f"{a.mean_t_keystream:.6g} | {a.mean_throughput:.3g} | {a.sample_hash or ''} |"
+        )
+    lines.append("")
+    lines.append("Top throughput per seed_strategy:")
+    lines.append("")
+    lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | mean_tp_bps | keystream_sha256 |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    seed_groups: Dict[str, List[BenchAgg]] = defaultdict(list)
+    for a in bench_aggs:
+        seed_groups[a.params.get("seed_strategy", "neighborhood3")].append(a)
+    for seed, aggs in seed_groups.items():
+        best = max(aggs, key=lambda x: x.mean_throughput or 0)
+        lines.append(
+            f"| {seed} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params['size']} | {best.params['scale']} | "
+            f"{best.mean_throughput:.3g} | {best.sample_hash or ''} |"
         )
     lines.append("")
 
@@ -252,6 +269,21 @@ def _render_markdown(
         lines.append(f"- Byte chi2 norm min/mean/max: {tuple(round(x,6) for x in stats(chi))}")
         lines.append(f"- Autocorr lag1 min/mean/max: {tuple(round(x,6) for x in stats(ac1))}")
         lines.append("")
+        lines.append("Per seed_strategy (mean values):")
+        lines.append("| seed_strategy | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 |")
+        lines.append("|---|---|---|---|---|")
+        analyze_seed_groups: Dict[str, List[AnalyzeAgg]] = defaultdict(list)
+        for a in analyze_aggs:
+            analyze_seed_groups[a.params.get("seed_strategy", "neighborhood3")].append(a)
+        for seed, aggs in analyze_seed_groups.items():
+            bs = [a.metrics.get("bit_ones_ratio") or 0.0 for a in aggs]
+            cs = [a.metrics.get("byte_chi2_norm") or 0.0 for a in aggs]
+            rs = [a.metrics.get("runs_norm_diff") or 0.0 for a in aggs]
+            acs = [a.metrics.get("autocorr_lag_1") or 0.0 for a in aggs]
+            lines.append(
+                f"| {seed} | {sum(bs)/len(bs):.6f} | {sum(cs)/len(cs):.6f} | {sum(rs)/len(rs):.6f} | {sum(acs)/len(acs):.6f} |"
+            )
+        lines.append("")
         lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 | keystream_sha256 |")
         lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
         for a in sorted(analyze_aggs, key=lambda x: (x.params["dt"], x.params["warmup"], x.params["quant_k"], x.params.get("seed_strategy"))):
@@ -264,16 +296,28 @@ def _render_markdown(
 
     # Best candidates
     lines.append("## Best Candidates (heuristic score)")
-    best = _score_candidates(bench_aggs, analyze_aggs)
-    if best:
+    best_overall, best_per_seed = _score_candidates(bench_aggs, analyze_aggs)
+    if best_overall:
+        lines.append("Top 5 overall:")
         lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | score | perf_score | rand_score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
         lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
-        for b in best:
+        for b in best_overall:
             lines.append(
                 f"| {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | {b.get('seed_strategy','')} | "
                 f"{b['total_score']:.6f} | {b['perf_score']:.6f} | {b['rand_score']:.6f} | "
                 f"{b['bit_ones_ratio']:.6f} | {b['autocorr_lag_1']:.6f} | {b['runs_norm_diff']:.6f} | {b['byte_chi2_norm']:.6f} |"
             )
+        lines.append("")
+    if best_per_seed:
+        lines.append("Top 3 per seed_strategy:")
+        lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        for seed, items in best_per_seed.items():
+            for b in items:
+                lines.append(
+                    f"| {seed} | {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | "
+                    f"{b['total_score']:.6f} | {b['bit_ones_ratio']:.6f} | {b['autocorr_lag_1']:.6f} | {b['runs_norm_diff']:.6f} | {b['byte_chi2_norm']:.6f} |"
+                )
     else:
         lines.append("- Not enough data to score.")
     lines.append("")
@@ -290,7 +334,7 @@ def _render_markdown(
     return "\n".join(lines)
 
 
-def _score_candidates(bench_aggs: List[BenchAgg], analyze_aggs: List[AnalyzeAgg]) -> List[Dict[str, Any]]:
+def _score_candidates(bench_aggs: List[BenchAgg], analyze_aggs: List[AnalyzeAgg]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     bench_map = {a.key: a for a in bench_aggs}
     results = []
 
@@ -329,7 +373,13 @@ def _score_candidates(bench_aggs: List[BenchAgg], analyze_aggs: List[AnalyzeAgg]
             }
         )
     results_sorted = sorted(results, key=lambda r: r["total_score"], reverse=True)[:5]
-    return results_sorted
+    per_seed: Dict[str, List[Dict[str, Any]]] = {}
+    for r in results:
+        seed = r.get("seed_strategy") or "neighborhood3"
+        per_seed.setdefault(seed, []).append(r)
+    for seed, lst in per_seed.items():
+        per_seed[seed] = sorted(lst, key=lambda r: r["total_score"], reverse=True)[:3]
+    return results_sorted, per_seed
 
 
 def _plot_lines(
@@ -339,27 +389,40 @@ def _plot_lines(
     out_path: Path,
 ):
     # data key: (dt, warmup, quant_k, seed_strategy) mapped to mean value
-    # For plotting: group by dt+seed, lines per quant_k, x warmup.
-    grouped: Dict[Tuple[float, float, str | None], List[Tuple[int, float]]] = defaultdict(list)
-    for (dt, warmup, quant_k, seed_strategy), val in data.items():
-        grouped[(dt, quant_k, seed_strategy)].append((warmup, val))
+    # Heuristik: wenn <=3 seed strategies, je seed eigener Plot; sonst alles zusammen mit Legend.
+    seed_values = sorted({k[3] or "neighborhood3" for k in data})
+    plot_refs: List[str] = []
 
-    for (dt, quant_k, seed_strategy), lst in grouped.items():
-        lst_sorted = sorted(lst, key=lambda x: x[0])
-        xs = [w for w, _ in lst_sorted]
-        ys = [v for _, v in lst_sorted]
-        label = f"quant_k={quant_k}" + (f" seed={seed_strategy}" if seed_strategy else "")
-        plt.plot(xs, ys, label=label)
-        plt.xlabel("warmup")
-        plt.ylabel(ylabel)
-        plt.title(f"{title} (dt={dt}, seed={seed_strategy})")
-        if len(grouped) > 1:
-            plt.legend()
-        out_file = out_path / f"{title.lower().replace(' ', '_')}_dt{str(dt).replace('.','p')}_q{str(quant_k).replace('.','p')}_seed{(seed_strategy or 'default').replace('_','-')}.png"
-        out_file.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_file, dpi=150, bbox_inches="tight")
-        plt.close()
-    return [str(p) for p in out_path.glob("*.png")]
+    def make_plot(filtered: Dict[Tuple[float, int, float, str | None], float], suffix: str = ""):
+        grouped: Dict[Tuple[float, float], List[Tuple[int, float, str | None]]] = defaultdict(list)
+        for (dt, warmup, quant_k, seed_strategy), val in filtered.items():
+            grouped[(dt, quant_k)].append((warmup, val, seed_strategy))
+
+        for (dt, quant_k), lst in grouped.items():
+            lst_sorted = sorted(lst, key=lambda x: x[0])
+            xs = [w for w, _, _ in lst_sorted]
+            ys = [v for _, v, _ in lst_sorted]
+            label = f"quant_k={quant_k}"
+            plt.plot(xs, ys, label=label)
+            plt.xlabel("warmup")
+            plt.ylabel(ylabel)
+            plt.title(f"{title} (dt={dt}{suffix})")
+            if len(grouped) > 1:
+                plt.legend()
+            seed_name = suffix.replace(" seed=", "") or "all"
+            out_file = out_path / f"{title.lower().replace(' ', '_')}_dt{str(dt).replace('.','p')}_q{str(quant_k).replace('.','p')}_{seed_name.replace(' ','_').replace('(','').replace(')','')}.png"
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(out_file, dpi=150, bbox_inches="tight")
+            plt.close()
+            plot_refs.append(str(out_file))
+
+    if len(seed_values) <= 3:
+        for seed in seed_values:
+            filtered = {k: v for k, v in data.items() if (k[3] or "neighborhood3") == seed}
+            make_plot(filtered, suffix=f" seed={seed}")
+    else:
+        make_plot(data, suffix="")
+    return plot_refs
 
 
 def generate_report(
