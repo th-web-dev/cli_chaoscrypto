@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from collections import defaultdict
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -195,15 +196,29 @@ def _render_markdown(
     analysis_path: Path,
     timestamp: Optional[str],
     plots: List[str],
+    report_dir: Path,
 ) -> str:
+    def _rel_path(path: Path) -> str:
+        path_abs = path.resolve()
+        base_abs = report_dir.resolve()
+        try:
+            return path_abs.relative_to(base_abs).as_posix()
+        except ValueError:
+            try:
+                return Path(os.path.relpath(path_abs, base_abs)).as_posix()
+            except Exception:
+                return path.name
+
     lines = []
     lines.append("# ChaosCrypto WP2 – Report")
     if timestamp:
         lines.append(f"_Generated: {timestamp} UTC_")
     lines.append("")
     lines.append("## Inputs")
-    lines.append(f"- Benchmark CSV: `{bench_path}` ({len(bench_aggs)} variants aggregated)")
-    lines.append(f"- Analyze CSV: `{analysis_path}` ({len(analyze_aggs)} variants aggregated)")
+    bench_rel = _rel_path(bench_path)
+    analysis_rel = _rel_path(analysis_path)
+    lines.append(f"- Benchmark CSV: `{bench_rel}` ({len(bench_aggs)} variants aggregated)")
+    lines.append(f"- Analyze CSV: `{analysis_rel}` ({len(analyze_aggs)} variants aggregated)")
     lines.append("- Token: not stored; only fingerprints in source CSV")
     lines.append("")
 
@@ -244,9 +259,23 @@ def _render_markdown(
             f"{a.mean_t_keystream:.6g} | {a.mean_throughput:.3g} | {a.sample_hash or ''} |"
         )
     lines.append("")
-    lines.append("Top throughput per seed_strategy:")
+    # Per seed_strategy (best across memory types)
+    lines.append("Top throughput per seed_strategy (best across memory types):")
     lines.append("")
-    lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | memory_type | mean_tp_bps | keystream_sha256 |")
+    lines.append("| seed_strategy | dt | warmup | quant_k | memory_type | mean_tp_bps | keystream_sha256 |")
+    lines.append("|---|---|---|---|---|---|---|")
+    seed_only_groups: Dict[str, List[BenchAgg]] = defaultdict(list)
+    for a in bench_aggs:
+        seed_only_groups[a.params.get("seed_strategy", "neighborhood3")].append(a)
+    for seed, aggs in seed_only_groups.items():
+        best = max(aggs, key=lambda x: x.mean_throughput or 0)
+        lines.append(
+            f"| {seed} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params.get('memory_type','')} | {best.mean_throughput:.3g} | {best.sample_hash or ''} |"
+        )
+    lines.append("")
+    lines.append("Top throughput per seed_strategy and memory_type:")
+    lines.append("")
+    lines.append("| seed_strategy | memory_type | dt | warmup | quant_k | size | scale | mean_tp_bps | keystream_sha256 |")
     lines.append("|---|---|---|---|---|---|---|---|---|")
     seed_groups: Dict[Tuple[str, str], List[BenchAgg]] = defaultdict(list)
     for a in bench_aggs:
@@ -254,7 +283,7 @@ def _render_markdown(
     for (seed, mem), aggs in seed_groups.items():
         best = max(aggs, key=lambda x: x.mean_throughput or 0)
         lines.append(
-            f"| {seed} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params['size']} | {best.params['scale']} | {mem} | "
+            f"| {seed} | {mem} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params['size']} | {best.params['scale']} | "
             f"{best.mean_throughput:.3g} | {best.sample_hash or ''} |"
         )
     lines.append("")
@@ -331,12 +360,19 @@ def _render_markdown(
     if plots:
         lines.append("## Plots")
         for p in plots:
-            lines.append(f"![]({p})")
+            rel_plot = _rel_path(Path(p))
+            lines.append(f"![]({rel_plot})")
         lines.append("")
 
     lines.append("## Appendix")
     lines.append("- CSV columns: benchmark includes timing/throughput; analyze includes keystream statistics.")
     lines.append("- Reproducibility: same config → identical hashes/metrics.")
+    lines.append("")
+    lines.append("## Methodology Notes")
+    lines.append("- Benchmark results are averaged over `repeats` runs (as configured; BA1 kit uses repeats=3).")
+    lines.append("- Analyze metrics are deterministic per variant and computed once per variant (no repeats by default).")
+    lines.append("- Environment details for the run are stored in `out/ba1/run_meta.txt` (UTC date, python version, uname, pip freeze).")
+    lines.append("- Statistical metrics describe properties of the generated keystream for the tested length; they do not prove cryptographic security.")
     return "\n".join(lines)
 
 
@@ -438,6 +474,119 @@ def _plot_lines(
     return plot_refs
 
 
+def _plot_matrix_mode(
+    bench_aggs: List[BenchAgg],
+    analyze_aggs: List[AnalyzeAgg],
+    plots_dir: Path,
+) -> List[str]:
+    plot_refs: List[str] = []
+    tp_data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
+    for a in bench_aggs:
+        tp_data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = a.mean_throughput
+    plot_refs.extend(_plot_lines(tp_data, "Bench Throughput", "throughput_keystream_bps", plots_dir / "bench"))
+
+    def collect_metric(metric_name: str) -> Dict[Tuple[float, int, float, str | None, str | None], float]:
+        data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
+        for a in analyze_aggs:
+            val = a.metrics.get(metric_name)
+            if val is not None:
+                data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = val
+        return data
+
+    bit_data = collect_metric("bit_ones_ratio")
+    if bit_data:
+        plot_refs.extend(_plot_lines(bit_data, "Analyze Bit Balance", "bit_ones_ratio", plots_dir / "analyze_bit"))
+    ac_data = collect_metric("autocorr_lag_1")
+    if ac_data:
+        plot_refs.extend(_plot_lines(ac_data, "Analyze Autocorr Lag1", "autocorr_lag_1", plots_dir / "analyze_autocorr"))
+    chi_data = collect_metric("byte_chi2_norm")
+    if chi_data:
+        plot_refs.extend(_plot_lines(chi_data, "Analyze Byte Chi2 Norm", "byte_chi2_norm", plots_dir / "analyze_chi2"))
+    return plot_refs
+
+
+def _plot_condensed_mode(
+    bench_aggs: List[BenchAgg],
+    analyze_aggs: List[AnalyzeAgg],
+    plots_dir: Path,
+) -> List[str]:
+    plot_refs: List[str] = []
+
+    def agg_mean_by_key(records, value_getter):
+        data: Dict[Tuple[float, int, float, str | None, str | None], List[float]] = defaultdict(list)
+        for r in records:
+            key = (
+                r.params["dt"],
+                r.params["warmup"],
+                r.params["quant_k"],
+                r.params.get("seed_strategy"),
+                r.params.get("memory_type"),
+            )
+            val = value_getter(r)
+            if val is not None:
+                data[key].append(val)
+        mean_data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
+        for k, vals in data.items():
+            mean_data[k] = sum(vals) / len(vals)
+        return mean_data
+
+    # Bench throughput
+    tp_mean = agg_mean_by_key(bench_aggs, lambda a: a.mean_throughput)
+    plot_refs.extend(_plot_condensed_lines(tp_mean, "Bench Throughput", "throughput_keystream_bps", plots_dir / "bench"))
+
+    # Analyze metrics
+    bit_mean = agg_mean_by_key(analyze_aggs, lambda a: a.metrics.get("bit_ones_ratio"))
+    if bit_mean:
+        plot_refs.extend(_plot_condensed_lines(bit_mean, "Analyze Bit Balance", "bit_ones_ratio", plots_dir / "analyze_bit"))
+    ac_mean = agg_mean_by_key(analyze_aggs, lambda a: a.metrics.get("autocorr_lag_1"))
+    if ac_mean:
+        plot_refs.extend(_plot_condensed_lines(ac_mean, "Analyze Autocorr Lag1", "autocorr_lag_1", plots_dir / "analyze_autocorr"))
+    chi_mean = agg_mean_by_key(analyze_aggs, lambda a: a.metrics.get("byte_chi2_norm"))
+    if chi_mean:
+        plot_refs.extend(_plot_condensed_lines(chi_mean, "Analyze Byte Chi2 Norm", "byte_chi2_norm", plots_dir / "analyze_chi2"))
+    return plot_refs
+
+
+def _plot_condensed_lines(
+    data: Dict[Tuple[float, int, float, str | None, str | None], float],
+    title: str,
+    ylabel: str,
+    out_dir: Path,
+) -> List[str]:
+    if not data:
+        return []
+    plot_refs: List[str] = []
+    quant_values = sorted({k[2] for k in data})
+    by_quant: Dict[float, Dict[Tuple[float, int, float, str | None, str | None], float]] = defaultdict(dict)
+    for k, v in data.items():
+        by_quant[k[2]][k] = v
+
+    for quant, subset in by_quant.items():
+        seedmem_groups: Dict[Tuple[str | None, str | None], List[Tuple[int, float]]] = defaultdict(list)
+        dt_val = None
+        for (dt, warmup, _, seed, mem), val in subset.items():
+            dt_val = dt
+            seedmem_groups[(seed or "neighborhood3", mem or "opensimplex")].append((warmup, val))
+
+        for (seed, mem), pairs in seedmem_groups.items():
+            pairs_sorted = sorted(pairs, key=lambda x: x[0])
+            xs = [w for w, _ in pairs_sorted]
+            ys = [v for _, v in pairs_sorted]
+            plt.plot(xs, ys, label=f"{seed}/{mem}")
+        plt.xlabel("warmup")
+        plt.ylabel(ylabel)
+        plt.title(f"{title} (dt={dt_val}, q={quant})")
+        if len(seedmem_groups) > 1:
+            plt.legend()
+        fname = f"{title.lower().replace(' ', '_')}_dt{str(dt_val).replace('.','p')}_q{str(quant).replace('.','p')}.png"
+        out_path = out_dir / fname
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        plot_refs.append(str(out_path))
+    return plot_refs
+
+
 def generate_report(
     bench_csv: Path,
     analysis_csv: Path,
@@ -447,6 +596,7 @@ def generate_report(
     plots_dir: Path | None = None,
     include_timestamp: bool = True,
     json_summary: Path | None = None,
+    plot_mode: str = "condensed",
 ) -> Dict[str, Any]:
     bench_rows = _read_csv(bench_csv)
     analyze_rows = _read_csv(analysis_csv)
@@ -458,34 +608,13 @@ def generate_report(
 
     plot_refs: List[str] = []
     if plots_dir:
-        # Throughput vs warmup
-        tp_data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
-        for a in bench_aggs:
-            tp_data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = a.mean_throughput
-        plot_refs.extend(
-            _plot_lines(tp_data, "Bench Throughput", "throughput_keystream_bps", plots_dir / "bench")
-        )
+        if plot_mode == "matrix":
+            plot_refs.extend(_plot_matrix_mode(bench_aggs, analyze_aggs, plots_dir))
+        else:
+            plot_refs.extend(_plot_condensed_mode(bench_aggs, analyze_aggs, plots_dir))
 
-        # Analyze plots
-        def collect_metric(metric_name: str) -> Dict[Tuple[float, int, float, str | None, str | None], float]:
-            data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
-            for a in analyze_aggs:
-                val = a.metrics.get(metric_name)
-                if val is not None:
-                    data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = val
-            return data
-
-        bit_data = collect_metric("bit_ones_ratio")
-        if bit_data:
-            plot_refs.extend(_plot_lines(bit_data, "Analyze Bit Balance", "bit_ones_ratio", plots_dir / "analyze_bit"))
-        ac_data = collect_metric("autocorr_lag_1")
-        if ac_data:
-            plot_refs.extend(_plot_lines(ac_data, "Analyze Autocorr Lag1", "autocorr_lag_1", plots_dir / "analyze_autocorr"))
-        chi_data = collect_metric("byte_chi2_norm")
-        if chi_data:
-            plot_refs.extend(_plot_lines(chi_data, "Analyze Byte Chi2 Norm", "byte_chi2_norm", plots_dir / "analyze_chi2"))
-
-    md = _render_markdown(bench_aggs, analyze_aggs, bench_csv, analysis_csv, timestamp, plot_refs)
+    report_dir = out_md.parent
+    md = _render_markdown(bench_aggs, analyze_aggs, bench_csv, analysis_csv, timestamp, plot_refs, report_dir)
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(md, encoding="utf-8")
 

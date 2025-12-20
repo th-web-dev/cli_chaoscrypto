@@ -560,6 +560,7 @@ def report(
     json_summary: Path | None = typer.Option(None, "--json-summary", help="Write summary JSON to path"),
     no_timestamp: bool = typer.Option(False, "--no-timestamp", help="Omit timestamp for deterministic reports"),
     json_flag: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+    plot_mode: str = typer.Option("condensed", "--plot-mode", help="Plot mode: condensed or matrix"),
 ):
     """Generate a markdown report (and optional plots) from benchmark/analyze outputs."""
     try:
@@ -572,6 +573,7 @@ def report(
             plots_dir=plots_dir,
             include_timestamp=not no_timestamp,
             json_summary=json_summary,
+            plot_mode=plot_mode,
         )
     except Exception as exc:  # noqa: BLE001
         typer.secho(f"Report failed: {exc}", fg=typer.colors.RED)
