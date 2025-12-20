@@ -3,3 +3,4 @@ typer
 rich
 pytest
 opensimplex
+pyyaml

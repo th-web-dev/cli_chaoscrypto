@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from typer.testing import CliRunner
 
@@ -49,6 +50,12 @@ def test_encrypt_decrypt_roundtrip(tmp_path, monkeypatch):
     assert enc_result.exit_code == 0, enc_result.output
     assert enc_path.exists()
 
+    # enc.json contains sampling metadata
+    enc_data = json.loads(enc_path.read_text())
+    assert enc_data["sampling"]["dt"] == 0.01
+    assert enc_data["sampling"]["warmup"] == 1000
+    assert enc_data["sampling"]["quant_k"] == 1e5
+
     dec_result = runner.invoke(
         app,
         [
@@ -57,6 +64,81 @@ def test_encrypt_decrypt_roundtrip(tmp_path, monkeypatch):
             "alice",
             "--token",
             "test-token",
+            "--in",
+            str(enc_path),
+            "--out",
+            str(dec_path),
+        ],
+    )
+    assert dec_result.exit_code == 0, dec_result.output
+    assert dec_path.read_text(encoding="utf-8") == "hello"
+
+
+def test_encrypt_decrypt_with_custom_params(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+
+    plaintext_path = Path(tmp_path) / "msg.txt"
+    plaintext_path.write_text("hello", encoding="utf-8")
+    enc_path = Path(tmp_path) / "enc.json"
+    dec_path = Path(tmp_path) / "dec.txt"
+
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--profile",
+            "bob",
+            "--token",
+            "other-token",
+            "--size",
+            "128",
+            "--scale",
+            "0.1",
+        ],
+    )
+
+    dt = 0.02
+    warmup = 50
+    quant_k = 12345
+
+    enc_result = runner.invoke(
+        app,
+        [
+            "encrypt",
+            "--profile",
+            "bob",
+            "--token",
+            "other-token",
+            "--coord",
+            "1,2",
+            "--in",
+            str(plaintext_path),
+            "--out",
+            str(enc_path),
+            "--dt",
+            str(dt),
+            "--warmup",
+            str(warmup),
+            "--quant-k",
+            str(quant_k),
+        ],
+    )
+    assert enc_result.exit_code == 0, enc_result.output
+
+    enc_data = json.loads(enc_path.read_text())
+    assert enc_data["sampling"]["dt"] == dt
+    assert enc_data["sampling"]["warmup"] == warmup
+    assert enc_data["sampling"]["quant_k"] == quant_k
+
+    dec_result = runner.invoke(
+        app,
+        [
+            "decrypt",
+            "--profile",
+            "bob",
+            "--token",
+            "other-token",
             "--in",
             str(enc_path),
             "--out",

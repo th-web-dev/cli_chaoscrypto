@@ -14,7 +14,7 @@ src/chaoscrypto/core/crypto/__init__.py
 src/chaoscrypto/core/crypto/xor.py
 src/chaoscrypto/core/memory/__init__.py
 src/chaoscrypto/core/memory/base.py
-src/chaoscrypto/core/memory/opensimplex_like.py
+src/chaoscrypto/core/memory/opensimplex.py
 src/chaoscrypto/core/sampling/__init__.py
 src/chaoscrypto/core/sampling/base.py
 src/chaoscrypto/core/sampling/quantize_byte.py
@@ -34,3 +34,4 @@ src/chaoscrypto_wp2.egg-info/top_level.txt
 tests/test_determinism.py
 tests/test_encrypt_decrypt.py
 tests/test_init.py
+tests/test_profile_commands.py

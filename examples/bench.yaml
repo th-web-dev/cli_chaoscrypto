@@ -1,0 +1,30 @@
+bench:
+  profile: alice
+  token: "secret"
+  coord: [12, 34]
+  nbytes: 4096
+  repeats: 2
+  field_regen_each_repeat: true
+
+matrix:
+  dt: [0.01]
+  warmup: [100, 1000]
+  quant_k: [100000.0]
+  size: [128]
+  scale: [0.1]
+
+metrics:
+  include_field_time: true
+  include_xor_time: true
+  include_decrypt_time: false
+  keystream_hash: sha256
+
+output:
+  include_timestamp_utc: true
+  include_field_fingerprint: true
+  include_keystream_preview: false
+  keystream_preview_bytes: 64
+
+validate:
+  assert_deterministic_within_run: true
+  extra_determinism_check: false

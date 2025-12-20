@@ -1,23 +1,72 @@
 # ChaosCrypto WP2 (CLI)
 
-Deterministic, profile-based CLI for the ChaosCrypto MVP (WP2). Implements a minimal pipeline:
+Dieses Repo enthält den minimalen, deterministischen ChaosCrypto-CLI-Prototyp (WP2-MVP).
 
-- Token → Memory (deterministic OpenSimplex noise)
-- Seed derivation (Neighborhood3)
-- Lorenz system (Euler)
-- Keystream sampling (quantized x component)
-- XOR encrypt/decrypt
+Kernschritte:
+- Token → Memory (deterministisches OpenSimplex-Noise-Feld)
+- Seed aus Koordinate (Neighborhood3)
+- Lorenz-System (Euler-Integration)
+- Keystream aus x-Komponente (quantisiert)
+- XOR für Ver- und Entschlüsselung
 
-## Usage (short)
+## Schnellstart (WSL, ohne Vorkenntnisse)
 
-```
-python -m chaoscrypto.cli.app init --profile alice --token "secret" --size 128 --scale 0.1
-python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
-python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
-```
+1) **In WSL ins Projektverzeichnis wechseln**  
+   Beispiel: `cd /mnt/c/Users/WP2`
 
-Run tests:
+2) **Virtuelle Umgebung anlegen (sauber und lokal)**  
+   ```bash
+   python3 -m venv .venv --without-pip
+   python3 -m pip install --break-system-packages --target .venv/lib/python3.12/site-packages pip
+   .venv/bin/python -m pip install --break-system-packages -r requirements.txt
+   .venv/bin/python -m pip install --break-system-packages -e .
+   ```
 
-```
-make test
-```
+3) **Funktionstest ausführen**  
+   ```bash
+   .venv/bin/python -m pytest -q
+   ```  
+   (Sollte “3 passed” melden.)
+
+4) **Beispielnutzung**  
+   - Profil anlegen (speichert Fingerprint, keine Klartext-Token):
+     ```bash
+     .venv/bin/python -m chaoscrypto.cli.app init --profile alice --token "secret" --size 128 --scale 0.1
+     ```
+   - Datei verschlüsseln:
+     ```bash
+     .venv/bin/python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
+     ```
+   - Wieder entschlüsseln:
+      ```bash
+      .venv/bin/python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
+      ```
+   - Optional steuerbar: `--dt`, `--warmup`, `--quant-k` bei `encrypt` setzen (werden in `enc.json` gespeichert und bei `decrypt` geprüft).
+   - Keystream (für Bench/Analyse, deterministisch):
+     ```bash
+     # SHA-256 Hash (Default-Output)
+     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 1024
+     # Rohbytes in Datei
+     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 1024 --out ks.bin
+     # Hex/Base64 nach stdout
+     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 16 --hex
+     ```
+   - Benchmark (YAML-gesteuert, keine enc.json; rein im RAM):
+     ```bash
+     .venv/bin/python -m chaoscrypto.cli.app benchmark --config examples/bench.yaml --out results.csv --out-json results.json
+     ```
+     `--json` gibt eine kurze Summary nach stdout; `--jobs` parallelisiert Varianten (deterministische Sortierung).
+
+5) **Ergebnis prüfen**  
+   ```bash
+   cmp -s msg.txt dec.txt && echo "identisch"
+   ```
+
+## Hinweise für den Betrieb
+- Alles läuft deterministisch: gleicher Token + gleiche Parameter → identische Fingerprints und Keystreams.
+- Profile liegen in `~/.chaoscrypto/wp2/<profile>/` (WSL-Home).
+- Das Noise-Feld wird bei Bedarf aus Token/Parametern deterministisch neu erzeugt (kein Cache).
+- CLI-Parameter können bei `encrypt` (dt, warmup, quant_k) gesetzt werden; Lorenz-Parameter bleiben fix.
+- Hilfsbefehle: `profile list`, `profile show`, `selftest` (Golden-Vector).
+- `keystream` ist die Grundlage für Benchmark und Analyse und garantiert reproduzierbare Keystreams (identisch zur Encrypt-Pipeline).
+- `benchmark` nutzt eine YAML-Matrix, generiert deterministische Keystreams im RAM, misst Zeiten/Hashes und schreibt CSV/JSON. Token wird nie im Klartext gespeichert (nur Fingerprint).

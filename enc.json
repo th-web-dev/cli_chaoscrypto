@@ -2,7 +2,7 @@
   "version": "1",
   "cipher": "lorenz",
   "memory": {
-    "type": "opensimplex_like",
+    "type": "opensimplex",
     "size": 128,
     "scale": 0.1
   },
@@ -17,7 +17,7 @@
     "x": 12,
     "y": 34
   },
-  "field_fingerprint": "b08ed84d3a2737575abee921b68d4509da246661d03404b3790fe275d48a006c",
+  "field_fingerprint": "e0e02ef8ed5c2cd3b3b86039fb6e6dccba9930092109da24c9141265a77b6d48",
   "ciphertext_encoding": "base64",
-  "ciphertext": "m29yCgUACPDkB1vYpA94Tm9DijCqe0gsFfHTVFll5EIIu5VMZIvwOrociaKhEu3EzX/wrFJqFAkxYGpj3YxfTF/qn7SVWOD5PvznLHwvmz5zKeeakSXGatPxMp39+W7jlme89aSruFPQ24Er9mC3Aic6bP0ZQmRRMFLeUynKmiM/AA=="
+  "ciphertext": "QY4srUZA7gj4TQjnZDWTNDYlx/HXhP0/LAy3HnEDvTMibbiVnwLmP8KZEpn7oQYxdiCeXohj1UJ0lydck8UFAewjCHtSznxFOLHbkDDrn2prIt8d9LwEUGl+zvh6MGnuJ+xo6ZqHHTeYUBL7Ie80LL+IHHFiKLh8vHVZDK6SLbk1Zg=="
 }
