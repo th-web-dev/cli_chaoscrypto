@@ -1,0 +1,36 @@
+analyze:
+  profile: alice
+  token: "secret"
+  coord: [12, 34]
+  nbytes: 1048576
+
+matrix:
+  dt: [0.01]
+  warmup: [100, 1000, 5000]
+  quant_k: [100000.0, 10000000.0]
+  size: [128]
+  scale: [0.1]
+  seed_strategy: ["neighborhood3", "window_mean_3x3"]
+  memory_type: ["opensimplex", "perlin"]
+
+metrics:
+  bit_balance: true
+  byte_histogram: true
+  chi_square_bytes: true
+  autocorr_bits:
+    enabled: true
+    max_lag: 32
+  runs_test_bits: true
+  hamming_weight_window:
+    enabled: true
+    window_bits: 1024
+
+output:
+  include_timestamp_utc: true
+  include_field_fingerprint: true
+  include_keystream_sha256: true
+  include_preview_base64: false
+  preview_bytes: 0
+
+validate:
+  assert_deterministic_within_run: true

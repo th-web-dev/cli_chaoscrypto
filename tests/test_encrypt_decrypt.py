@@ -96,6 +96,8 @@ def test_encrypt_decrypt_new_seed_strategy(tmp_path, monkeypatch):
             "128",
             "--scale",
             "0.1",
+            "--memory-type",
+            "perlin",
         ],
     )
 
@@ -115,6 +117,8 @@ def test_encrypt_decrypt_new_seed_strategy(tmp_path, monkeypatch):
             str(enc_path),
             "--seed-strategy",
             "window_mean_3x3",
+            "--memory-type",
+            "perlin",
         ],
     )
     assert enc_result.exit_code == 0, enc_result.output

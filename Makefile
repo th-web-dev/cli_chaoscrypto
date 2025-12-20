@@ -9,3 +9,9 @@ fmt:
 
 lint:
 \t@echo "No linter configured. Add one if needed."
+
+ba1:
+\tbash scripts/run_ba1.sh
+
+clean-out:
+\trm -rf out

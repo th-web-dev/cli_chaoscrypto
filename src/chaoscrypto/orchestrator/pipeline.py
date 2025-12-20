@@ -15,8 +15,9 @@ from chaoscrypto.core.constants import (
     SEED_STRATEGY,
 )
 from chaoscrypto.core.crypto.xor import xor_bytes
-from chaoscrypto.core.memory.base import MemoryModel, MemoryParams
-from chaoscrypto.core.memory.opensimplex import OpenSimplexMemory
+from chaoscrypto.core.memory.base import MemoryModel, MemoryParams, get_memory_model
+from chaoscrypto.core.memory import opensimplex  # noqa: F401
+from chaoscrypto.core.memory import perlin  # noqa: F401
 from chaoscrypto.core.sampling.quantize_byte import QuantizeByteSampling
 from chaoscrypto.core.seed.base import get_seed_strategy
 from chaoscrypto.core.seed import strategies  # noqa: F401 (registers strategies)
@@ -25,7 +26,7 @@ from chaoscrypto.core.seed import strategies  # noqa: F401 (registers strategies
 def build_memory_field(
     token_bytes: bytes, params: MemoryParams
 ) -> tuple[np.ndarray, str]:
-    model: MemoryModel = OpenSimplexMemory()
+    model: MemoryModel = get_memory_model(params.type)
     field = model.generate(token_bytes, params)
     fingerprint = MemoryModel.fingerprint(field)
     return field, fingerprint

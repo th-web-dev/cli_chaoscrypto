@@ -191,3 +191,4 @@ def test_report_plots(tmp_path):
     pngs = list(plots_dir.rglob("*.png"))
     assert pngs, "Expected at least one plot"
     assert all(p.stat().st_size > 0 for p in pngs)
+    assert any("opensimplex" in p.name or "perlin" in p.name for p in pngs)

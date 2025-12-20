@@ -19,6 +19,8 @@ from chaoscrypto.io.profiles import (
 )
 from chaoscrypto.bench.runner import (
     ConfigError,
+    MatrixConfig as BenchMatrixConfig,
+    FullConfig as BenchFullConfig,
     parse_config,
     run_benchmark,
     write_csv,
@@ -26,6 +28,8 @@ from chaoscrypto.bench.runner import (
 )
 from chaoscrypto.analysis.runner import (
     ConfigError as AnalyzeConfigError,
+    MatrixConfig as AnalyzeMatrixConfig,
+    FullConfig as AnalyzeFullConfig,
     parse_config as parse_analyze_config,
     run_analyze,
     write_csv as write_analyze_csv,
@@ -65,13 +69,20 @@ def init(
     token: str = typer.Option(..., "--token", "-t", help="Shared token (kept client-side)"),
     size: int = typer.Option(constants.DEFAULT_MEMORY_SIZE, help="Memory size (NxN)"),
     scale: float = typer.Option(constants.DEFAULT_MEMORY_SCALE, help="Memory scale factor"),
+    memory_type: str = typer.Option(constants.MEMORY_TYPE, "--memory-type", help="Memory model (opensimplex|perlin)"),
 ):
     """Create a profile and persist deterministic memory metadata."""
     if profile_exists(profile):
         typer.secho(f"Profile '{profile}' already exists.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    params = MemoryParams(type=constants.MEMORY_TYPE, size=size, scale=scale)
+    from chaoscrypto.core.memory.base import list_memory_models
+
+    if memory_type not in list_memory_models():
+        typer.secho(f"Unknown memory type '{memory_type}'. Options: {list_memory_models()}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    params = MemoryParams(type=memory_type, size=size, scale=scale)
     token_bytes = token.encode(constants.ENCODING)
 
     field, field_fp = build_memory_field(token_bytes, params)
@@ -100,6 +111,7 @@ def encrypt(
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
     seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
+    memory_type: str | None = typer.Option(None, "--memory-type", help="Memory type (must match profile)"),
 ):
     """Encrypt a plaintext file to enc.json with full reproduction metadata."""
     if not profile_exists(profile):
@@ -108,6 +120,9 @@ def encrypt(
 
     meta = load_profile_meta(profile)
     params = memory_params_from_meta(meta)
+    if memory_type and memory_type != params.type:
+        typer.secho(f"Profile memory type is '{params.type}', but '{memory_type}' was requested.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
     token_bytes = token.encode(constants.ENCODING)
     coord_tuple = parse_coord(coord)
 
@@ -176,6 +191,7 @@ def decrypt(
     if (
         int(enc_memory.get("size", params.size)) != params.size
         or float(enc_memory.get("scale", params.scale)) != params.scale
+        or str(enc_memory.get("type", params.type)) != params.type
     ):
         typer.secho("enc.json memory parameters do not match the profile.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
@@ -237,6 +253,7 @@ def keystream(
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
     seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
+    memory_type: str = typer.Option(None, "--memory-type", help="Memory type override (must match profile)"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write raw keystream bytes to file"),
     hex_out: bool = typer.Option(False, "--hex", help="Write hex to stdout"),
     base64_out: bool = typer.Option(False, "--base64", help="Write base64 to stdout"),
@@ -271,10 +288,16 @@ def keystream(
     token_bytes = token.encode(constants.ENCODING)
     coord_tuple = parse_coord(coord)
 
+    if memory_type is None:
+        memory_type = params.type
+    elif memory_type != params.type:
+        typer.secho(f"Profile memory type is '{params.type}', but '{memory_type}' was requested.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
     if seed_strategy not in list_seed_strategies():
         typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    params = MemoryParams(type=memory_type, size=params.size, scale=params.scale)
     field, field_fp = build_memory_field(token_bytes, params)
     if field_fp != meta["field_fingerprint"]:
         typer.secho("Token or parameters mismatch (field fingerprint differs).", fg=typer.colors.RED)
@@ -402,6 +425,23 @@ def benchmark(
     if any(val != profile_params.scale for val in cfg.matrix.scale):
         typer.secho("Matrix scale values must match the profile scale.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    if not cfg.matrix.provided_memory_type:
+        cfg = BenchFullConfig(
+            bench=cfg.bench,
+            matrix=BenchMatrixConfig(
+                dt=cfg.matrix.dt,
+                warmup=cfg.matrix.warmup,
+                quant_k=cfg.matrix.quant_k,
+                size=cfg.matrix.size,
+                scale=cfg.matrix.scale,
+                seed_strategy=cfg.matrix.seed_strategy,
+                memory_type=[profile_params.type],
+                provided_memory_type=False,
+            ),
+            metrics=cfg.metrics,
+            output=cfg.output,
+            validate=cfg.validate,
+        )
 
     try:
         records = run_benchmark(cfg, jobs=jobs)
@@ -461,6 +501,23 @@ def analyze(
     if any(val != profile_params.scale for val in cfg.matrix.scale):
         typer.secho("Matrix scale values must match the profile scale.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    if not cfg.matrix.provided_memory_type:
+        cfg = AnalyzeFullConfig(
+            analyze=cfg.analyze,
+            matrix=AnalyzeMatrixConfig(
+                dt=cfg.matrix.dt,
+                warmup=cfg.matrix.warmup,
+                quant_k=cfg.matrix.quant_k,
+                size=cfg.matrix.size,
+                scale=cfg.matrix.scale,
+                seed_strategy=cfg.matrix.seed_strategy,
+                memory_type=[profile_params.type],
+                provided_memory_type=False,
+            ),
+            metrics=cfg.metrics,
+            output=cfg.output,
+            validate=cfg.validate,
+        )
 
     try:
         records = run_analyze(cfg, jobs=jobs)

@@ -23,6 +23,7 @@ from chaoscrypto.orchestrator.pipeline import (
     generate_keystream,
 )
 from chaoscrypto.core.seed.base import get_seed_strategy, list_seed_strategies
+from chaoscrypto.core.memory.base import list_memory_models
 
 
 # -------------------------
@@ -48,6 +49,8 @@ class MatrixConfig:
     size: Sequence[int]
     scale: Sequence[float]
     seed_strategy: Sequence[str]
+    memory_type: Sequence[str]
+    provided_memory_type: bool
 
 
 @dataclass(frozen=True)
@@ -133,13 +136,22 @@ def parse_config(path: Path) -> FullConfig:
         field_regen_each_repeat=bench_cfg.field_regen_each_repeat,
     )
 
+    mem_provided = "memory_type" in matrix
+    mem_val = matrix.get("memory_type", [constants.MEMORY_TYPE])
+    if not isinstance(mem_val, (list, tuple)):
+        mem_val = [mem_val]
+    seed_val = matrix.get("seed_strategy", [constants.SEED_STRATEGY])
+    if not isinstance(seed_val, (list, tuple)):
+        seed_val = [seed_val]
     matrix_cfg = MatrixConfig(
         dt=[float(x) for x in _require(matrix, "dt", (list, tuple))],
         warmup=[int(x) for x in _require(matrix, "warmup", (list, tuple))],
         quant_k=[float(x) for x in _require(matrix, "quant_k", (list, tuple))],
         size=[int(x) for x in matrix.get("size", [constants.DEFAULT_MEMORY_SIZE])],
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
-        seed_strategy=[str(x) for x in matrix.get("seed_strategy", [constants.SEED_STRATEGY])],
+        seed_strategy=[str(x) for x in seed_val],
+        memory_type=[str(x) for x in mem_val],
+        provided_memory_type=mem_provided,
     )
 
     metrics_cfg = MetricsConfig(
@@ -166,6 +178,9 @@ def parse_config(path: Path) -> FullConfig:
     for name in matrix_cfg.seed_strategy:
         if name not in list_seed_strategies():
             raise ConfigError(f"Unknown seed_strategy '{name}'. Available: {list_seed_strategies()}")
+    for name in matrix_cfg.memory_type:
+        if name not in list_memory_models():
+            raise ConfigError(f"Unknown memory_type '{name}'. Available: {list_memory_models()}")
 
     return FullConfig(
         bench=bench_cfg,
@@ -293,9 +308,11 @@ def _keystream_and_metrics(
 
 def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
     combos = []
-    for dt, warmup, quant_k, size, scale, seed_strategy in itertools.product(
-        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy
+    for dt, warmup, quant_k, size, scale, seed_strategy, memory_type in itertools.product(
+        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type
     ):
+        seed_strategy = seed_strategy or constants.SEED_STRATEGY
+        memory_type = memory_type or constants.MEMORY_TYPE
         combos.append(
             {
                 "dt": float(dt),
@@ -304,6 +321,7 @@ def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
                 "size": int(size),
                 "scale": float(scale),
                 "seed_strategy": str(seed_strategy),
+                "memory_type": str(memory_type),
             }
         )
     return combos
@@ -318,7 +336,7 @@ def _run_single_variant(
     repeat_index: int,
 ) -> Dict[str, Any]:
     params = MemoryParams(
-        type=constants.MEMORY_TYPE,
+        type=variant["memory_type"],
         size=variant["size"],
         scale=variant["scale"],
     )
@@ -376,6 +394,7 @@ def _run_single_variant(
         "size": variant["size"],
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
+        "memory_type": variant["memory_type"],
         "keystream_sha256": ks_metrics["keystream_sha256"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp if output.include_field_fingerprint else None,
@@ -425,6 +444,7 @@ def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["size"],
             rec["scale"],
             rec.get("seed_strategy"),
+            rec.get("memory_type"),
             rec["repeat_index"],
         )
 
@@ -451,6 +471,7 @@ CSV_FIELDS = [
     "size",
     "scale",
     "seed_strategy",
+    "memory_type",
     "t_field_s",
     "t_keystream_s",
     "t_xor_s",

@@ -22,6 +22,7 @@ from chaoscrypto.orchestrator.pipeline import (
     generate_keystream,
 )
 from chaoscrypto.core.seed.base import list_seed_strategies
+from chaoscrypto.core.memory.base import list_memory_models
 from chaoscrypto.core.seed.base import list_seed_strategies
 
 
@@ -45,6 +46,8 @@ class MatrixConfig:
     size: Sequence[int]
     scale: Sequence[float]
     seed_strategy: Sequence[str]
+    memory_type: Sequence[str]
+    provided_memory_type: bool
 
 
 @dataclass(frozen=True)
@@ -125,13 +128,22 @@ def parse_config(path: Path) -> FullConfig:
         nbytes=int(_require(analyze, "nbytes", (int, float))),
     )
 
+    mem_provided = "memory_type" in matrix
+    mem_val = matrix.get("memory_type", [constants.MEMORY_TYPE])
+    if not isinstance(mem_val, (list, tuple)):
+        mem_val = [mem_val]
+    seed_val = matrix.get("seed_strategy", [constants.SEED_STRATEGY])
+    if not isinstance(seed_val, (list, tuple)):
+        seed_val = [seed_val]
     matrix_cfg = MatrixConfig(
         dt=[float(x) for x in _require(matrix, "dt", (list, tuple))],
         warmup=[int(x) for x in _require(matrix, "warmup", (list, tuple))],
         quant_k=[float(x) for x in _require(matrix, "quant_k", (list, tuple))],
         size=[int(x) for x in matrix.get("size", [constants.DEFAULT_MEMORY_SIZE])],
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
-        seed_strategy=[str(x) for x in matrix.get("seed_strategy", [constants.SEED_STRATEGY])],
+        seed_strategy=[str(x) for x in seed_val],
+        memory_type=[str(x) for x in mem_val],
+        provided_memory_type=mem_provided,
     )
 
     autocorr = metrics.get("autocorr_bits", {})
@@ -171,6 +183,9 @@ def parse_config(path: Path) -> FullConfig:
     for name in matrix_cfg.seed_strategy:
         if name not in list_seed_strategies():
             raise ConfigError(f"Unknown seed_strategy '{name}'. Available: {list_seed_strategies()}")
+    for name in matrix_cfg.memory_type:
+        if name not in list_memory_models():
+            raise ConfigError(f"Unknown memory_type '{name}'. Available: {list_memory_models()}")
 
     return FullConfig(
         analyze=analyze_cfg,
@@ -184,9 +199,11 @@ def parse_config(path: Path) -> FullConfig:
 def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> List[Dict[str, Any]]:
     combos = []
     for coord in coords:
-        for dt, warmup, quant_k, size, scale, seed_strategy in itertools.product(
-            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy
+        for dt, warmup, quant_k, size, scale, seed_strategy, memory_type in itertools.product(
+            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type
         ):
+            seed_strategy = seed_strategy or constants.SEED_STRATEGY
+            memory_type = memory_type or constants.MEMORY_TYPE
             combos.append(
                 {
                     "coord": coord,
@@ -196,6 +213,7 @@ def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> Lis
                     "size": int(size),
                     "scale": float(scale),
                     "seed_strategy": str(seed_strategy),
+                    "memory_type": str(memory_type),
                 }
             )
     return combos
@@ -304,6 +322,7 @@ def _analyze_one(
     token_fp: str,
 ) -> Dict[str, Any]:
     params = MemoryParams(type=constants.MEMORY_TYPE, size=variant["size"], scale=variant["scale"])
+    params = MemoryParams(type=variant["memory_type"], size=variant["size"], scale=variant["scale"])
     if variant["seed_strategy"] not in list_seed_strategies():
         raise ConfigError(f"Unknown seed_strategy '{variant['seed_strategy']}'. Available: {list_seed_strategies()}")
     ks, field_fp = _generate_keystream(
@@ -366,6 +385,7 @@ def _analyze_one(
         "size": variant["size"],
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
+        "memory_type": variant["memory_type"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp if cfg.output.include_field_fingerprint else None,
         "keystream_sha256": hashlib.sha256(ks).hexdigest() if cfg.output.include_keystream_sha256 else None,
@@ -408,6 +428,7 @@ def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["size"],
             rec["scale"],
             rec.get("seed_strategy"),
+            rec.get("memory_type"),
         )
 
     records_sorted = sorted(records, key=sort_key)
@@ -426,6 +447,7 @@ CSV_FIELDS_BASE = [
     "size",
     "scale",
     "seed_strategy",
+    "memory_type",
     "keystream_sha256",
     "field_fingerprint",
     "token_fingerprint",

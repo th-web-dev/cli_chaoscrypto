@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+from chaoscrypto.utils.records import normalize_record_memory_type
 
 
 def _parse_float(val: str | None) -> Optional[float]:
@@ -36,7 +37,7 @@ def _read_csv(path: Path) -> List[Dict[str, Any]]:
         for row in reader:
             if "seed_strategy" not in row or not row.get("seed_strategy"):
                 row["seed_strategy"] = "neighborhood3"
-            rows.append(dict(row))
+            rows.append(normalize_record_memory_type(dict(row)))
     return rows
 
 
@@ -71,6 +72,7 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
             _parse_int(r.get("size")),
             _parse_float(r.get("scale")),
             r.get("seed_strategy") or "neighborhood3",
+            r.get("memory_type") or "opensimplex",
             _parse_int(r.get("coord_x")),
             _parse_int(r.get("coord_y")),
         )
@@ -99,8 +101,9 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
             "size": key[3],
             "scale": key[4],
             "seed_strategy": key[5],
-            "coord_x": key[6],
-            "coord_y": key[7],
+            "memory_type": key[6],
+            "coord_x": key[7],
+            "coord_y": key[8],
             "profile": sample.get("profile"),
             "nbytes": _parse_int(sample.get("nbytes")),
         }
@@ -129,6 +132,7 @@ def _group_analyze(rows: List[Dict[str, Any]]) -> List[AnalyzeAgg]:
             _parse_int(r.get("size")),
             _parse_float(r.get("scale")),
             r.get("seed_strategy") or "neighborhood3",
+            r.get("memory_type") or "opensimplex",
             _parse_int(r.get("coord_x")),
             _parse_int(r.get("coord_y")),
         )
@@ -166,8 +170,9 @@ def _group_analyze(rows: List[Dict[str, Any]]) -> List[AnalyzeAgg]:
             "size": key[3],
             "scale": key[4],
             "seed_strategy": key[5],
-            "coord_x": key[6],
-            "coord_y": key[7],
+            "memory_type": key[6],
+            "coord_x": key[7],
+            "coord_y": key[8],
             "profile": sample.get("profile"),
             "nbytes": _parse_int(sample.get("nbytes")),
         }
@@ -220,6 +225,7 @@ def _render_markdown(
         lines.append(f"- Coord: ({sample.get('coord_x')},{sample.get('coord_y')})")
         lines.append(f"- nbytes: {sample.get('nbytes')}")
         lines.append(f"- Seed strategies: {sorted({a.params.get('seed_strategy','neighborhood3') for a in bench_aggs})}")
+        lines.append(f"- Memory types: {sorted({a.params.get('memory_type','opensimplex') for a in bench_aggs})}")
         lines.append(f"- Varying parameters:")
         for k, vals in varying.items():
             lines.append(f"  - {k}: {vals}")
@@ -230,25 +236,25 @@ def _render_markdown(
     top_by_tp = sorted(bench_aggs, key=lambda a: a.mean_throughput or 0, reverse=True)[:5]
     lines.append("Top throughput overall (mean over repeats):")
     lines.append("")
-    lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | memory_type | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
     for a in top_by_tp:
         lines.append(
-            f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | "
+            f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | {a.params.get('memory_type','')} | "
             f"{a.mean_t_keystream:.6g} | {a.mean_throughput:.3g} | {a.sample_hash or ''} |"
         )
     lines.append("")
     lines.append("Top throughput per seed_strategy:")
     lines.append("")
-    lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | mean_tp_bps | keystream_sha256 |")
-    lines.append("|---|---|---|---|---|---|---|---|")
-    seed_groups: Dict[str, List[BenchAgg]] = defaultdict(list)
+    lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | memory_type | mean_tp_bps | keystream_sha256 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
+    seed_groups: Dict[Tuple[str, str], List[BenchAgg]] = defaultdict(list)
     for a in bench_aggs:
-        seed_groups[a.params.get("seed_strategy", "neighborhood3")].append(a)
-    for seed, aggs in seed_groups.items():
+        seed_groups[(a.params.get("seed_strategy", "neighborhood3"), a.params.get("memory_type", "opensimplex"))].append(a)
+    for (seed, mem), aggs in seed_groups.items():
         best = max(aggs, key=lambda x: x.mean_throughput or 0)
         lines.append(
-            f"| {seed} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params['size']} | {best.params['scale']} | "
+            f"| {seed} | {best.params['dt']} | {best.params['warmup']} | {best.params['quant_k']} | {best.params['size']} | {best.params['scale']} | {mem} | "
             f"{best.mean_throughput:.3g} | {best.sample_hash or ''} |"
         )
     lines.append("")
@@ -269,26 +275,26 @@ def _render_markdown(
         lines.append(f"- Byte chi2 norm min/mean/max: {tuple(round(x,6) for x in stats(chi))}")
         lines.append(f"- Autocorr lag1 min/mean/max: {tuple(round(x,6) for x in stats(ac1))}")
         lines.append("")
-        lines.append("Per seed_strategy (mean values):")
-        lines.append("| seed_strategy | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 |")
-        lines.append("|---|---|---|---|---|")
-        analyze_seed_groups: Dict[str, List[AnalyzeAgg]] = defaultdict(list)
+        lines.append("Per seed_strategy / memory_type (mean values):")
+        lines.append("| seed_strategy | memory_type | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 |")
+        lines.append("|---|---|---|---|---|---|")
+        analyze_seed_groups: Dict[Tuple[str, str], List[AnalyzeAgg]] = defaultdict(list)
         for a in analyze_aggs:
-            analyze_seed_groups[a.params.get("seed_strategy", "neighborhood3")].append(a)
-        for seed, aggs in analyze_seed_groups.items():
+            analyze_seed_groups[(a.params.get("seed_strategy", "neighborhood3"), a.params.get("memory_type", "opensimplex"))].append(a)
+        for (seed, mem), aggs in analyze_seed_groups.items():
             bs = [a.metrics.get("bit_ones_ratio") or 0.0 for a in aggs]
             cs = [a.metrics.get("byte_chi2_norm") or 0.0 for a in aggs]
             rs = [a.metrics.get("runs_norm_diff") or 0.0 for a in aggs]
             acs = [a.metrics.get("autocorr_lag_1") or 0.0 for a in aggs]
             lines.append(
-                f"| {seed} | {sum(bs)/len(bs):.6f} | {sum(cs)/len(cs):.6f} | {sum(rs)/len(rs):.6f} | {sum(acs)/len(acs):.6f} |"
+                f"| {seed} | {mem} | {sum(bs)/len(bs):.6f} | {sum(cs)/len(cs):.6f} | {sum(rs)/len(rs):.6f} | {sum(acs)/len(acs):.6f} |"
             )
         lines.append("")
-        lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 | keystream_sha256 |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | memory_type | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 | keystream_sha256 |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for a in sorted(analyze_aggs, key=lambda x: (x.params["dt"], x.params["warmup"], x.params["quant_k"], x.params.get("seed_strategy"))):
             lines.append(
-                f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | "
+                f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | {a.params.get('memory_type','')} | "
                 f"{(a.metrics.get('bit_ones_ratio') or 0):.6f} | {(a.metrics.get('byte_chi2_norm') or 0):.6f} | "
                 f"{(a.metrics.get('runs_norm_diff') or 0):.6f} | {(a.metrics.get('autocorr_lag_1') or 0):.6f} | {a.keystream_sha256 or ''} |"
             )
@@ -299,23 +305,23 @@ def _render_markdown(
     best_overall, best_per_seed = _score_candidates(bench_aggs, analyze_aggs)
     if best_overall:
         lines.append("Top 5 overall:")
-        lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | score | perf_score | rand_score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | memory_type | score | perf_score | rand_score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for b in best_overall:
             lines.append(
-                f"| {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | {b.get('seed_strategy','')} | "
+                f"| {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | {b.get('seed_strategy','')} | {b.get('memory_type','')} | "
                 f"{b['total_score']:.6f} | {b['perf_score']:.6f} | {b['rand_score']:.6f} | "
                 f"{b['bit_ones_ratio']:.6f} | {b['autocorr_lag_1']:.6f} | {b['runs_norm_diff']:.6f} | {b['byte_chi2_norm']:.6f} |"
             )
         lines.append("")
     if best_per_seed:
         lines.append("Top 3 per seed_strategy:")
-        lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| seed_strategy | dt | warmup | quant_k | size | scale | memory_type | score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for seed, items in best_per_seed.items():
             for b in items:
                 lines.append(
-                    f"| {seed} | {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | "
+                    f"| {seed} | {b['dt']} | {b['warmup']} | {b['quant_k']} | {b['size']} | {b['scale']} | {b.get('memory_type','')} | "
                     f"{b['total_score']:.6f} | {b['bit_ones_ratio']:.6f} | {b['autocorr_lag_1']:.6f} | {b['runs_norm_diff']:.6f} | {b['byte_chi2_norm']:.6f} |"
                 )
     else:
@@ -363,6 +369,7 @@ def _score_candidates(bench_aggs: List[BenchAgg], analyze_aggs: List[AnalyzeAgg]
                 "size": a.params["size"],
                 "scale": a.params["scale"],
                 "seed_strategy": a.params.get("seed_strategy"),
+                "memory_type": a.params.get("memory_type"),
                 "perf_score": perf_score,
                 "rand_score": rand_score,
                 "total_score": total,
@@ -383,45 +390,51 @@ def _score_candidates(bench_aggs: List[BenchAgg], analyze_aggs: List[AnalyzeAgg]
 
 
 def _plot_lines(
-    data: Dict[Tuple[float, int, float, str | None], float],
+    data: Dict[Tuple[float, int, float, str | None, str | None], float],
     title: str,
     ylabel: str,
     out_path: Path,
 ):
-    # data key: (dt, warmup, quant_k, seed_strategy) mapped to mean value
-    # Heuristik: wenn <=3 seed strategies, je seed eigener Plot; sonst alles zusammen mit Legend.
+    # data key: (dt, warmup, quant_k, seed_strategy, memory_type)
     seed_values = sorted({k[3] or "neighborhood3" for k in data})
+    memory_values = sorted({k[4] or "opensimplex" for k in data})
     plot_refs: List[str] = []
 
-    def make_plot(filtered: Dict[Tuple[float, int, float, str | None], float], suffix: str = ""):
-        grouped: Dict[Tuple[float, float], List[Tuple[int, float, str | None]]] = defaultdict(list)
-        for (dt, warmup, quant_k, seed_strategy), val in filtered.items():
-            grouped[(dt, quant_k)].append((warmup, val, seed_strategy))
+    def make_plot(filtered: Dict[Tuple[float, int, float, str | None, str | None], float], suffix: str = "", mem_suffix: str = ""):
+        grouped: Dict[Tuple[float, float], List[Tuple[int, float, str | None, str | None]]] = defaultdict(list)
+        for (dt, warmup, quant_k, seed_strategy, memory_type), val in filtered.items():
+            grouped[(dt, quant_k)].append((warmup, val, seed_strategy, memory_type))
 
         for (dt, quant_k), lst in grouped.items():
             lst_sorted = sorted(lst, key=lambda x: x[0])
-            xs = [w for w, _, _ in lst_sorted]
-            ys = [v for _, v, _ in lst_sorted]
+            xs = [w for w, _, _, _ in lst_sorted]
+            ys = [v for _, v, _, _ in lst_sorted]
             label = f"quant_k={quant_k}"
             plt.plot(xs, ys, label=label)
             plt.xlabel("warmup")
             plt.ylabel(ylabel)
-            plt.title(f"{title} (dt={dt}{suffix})")
+            plt.title(f"{title} (dt={dt}{suffix}{mem_suffix})")
             if len(grouped) > 1:
                 plt.legend()
             seed_name = suffix.replace(" seed=", "") or "all"
-            out_file = out_path / f"{title.lower().replace(' ', '_')}_dt{str(dt).replace('.','p')}_q{str(quant_k).replace('.','p')}_{seed_name.replace(' ','_').replace('(','').replace(')','')}.png"
+            mem_name = mem_suffix.replace(" mem=", "") or "allmem"
+            out_file = out_path / f"{title.lower().replace(' ', '_')}_dt{str(dt).replace('.','p')}_q{str(quant_k).replace('.','p')}_{seed_name.replace(' ','_').replace('(','').replace(')','')}_{mem_name}.png"
             out_file.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(out_file, dpi=150, bbox_inches="tight")
             plt.close()
             plot_refs.append(str(out_file))
 
-    if len(seed_values) <= 3:
-        for seed in seed_values:
-            filtered = {k: v for k, v in data.items() if (k[3] or "neighborhood3") == seed}
-            make_plot(filtered, suffix=f" seed={seed}")
+    if len(memory_values) <= 2:
+        for mem in memory_values:
+            filtered_mem = {k: v for k, v in data.items() if (k[4] or "opensimplex") == mem}
+            if len(seed_values) <= 3:
+                for seed in seed_values:
+                    filtered = {k: v for k, v in filtered_mem.items() if (k[3] or "neighborhood3") == seed}
+                    make_plot(filtered, suffix=f" seed={seed}", mem_suffix=f" mem={mem}")
+            else:
+                make_plot(filtered_mem, mem_suffix=f" mem={mem}")
     else:
-        make_plot(data, suffix="")
+        make_plot(data, suffix="", mem_suffix="")
     return plot_refs
 
 
@@ -446,20 +459,20 @@ def generate_report(
     plot_refs: List[str] = []
     if plots_dir:
         # Throughput vs warmup
-        tp_data: Dict[Tuple[float, int, float, str | None], float] = {}
+        tp_data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
         for a in bench_aggs:
-            tp_data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"))] = a.mean_throughput
+            tp_data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = a.mean_throughput
         plot_refs.extend(
             _plot_lines(tp_data, "Bench Throughput", "throughput_keystream_bps", plots_dir / "bench")
         )
 
         # Analyze plots
-        def collect_metric(metric_name: str) -> Dict[Tuple[float, int, float, str | None], float]:
-            data: Dict[Tuple[float, int, float, str | None], float] = {}
+        def collect_metric(metric_name: str) -> Dict[Tuple[float, int, float, str | None, str | None], float]:
+            data: Dict[Tuple[float, int, float, str | None, str | None], float] = {}
             for a in analyze_aggs:
                 val = a.metrics.get(metric_name)
                 if val is not None:
-                    data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"))] = val
+                    data[(a.params["dt"], a.params["warmup"], a.params["quant_k"], a.params.get("seed_strategy"), a.params.get("memory_type"))] = val
             return data
 
         bit_data = collect_metric("bit_ones_ratio")

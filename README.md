@@ -88,3 +88,5 @@ Kernschritte:
 - `analyze` baut auf derselben Matrix-Logik auf und berechnet deterministische Keystream-Metriken (Bit-Balance, Histogram/Chi², Autocorr, Runs, Hamming-Weights); Outputs CSV/JSON, keine enc.json, Token bleibt verborgen.
 - `report` fasst Benchmark/Analyze-Outputs in Markdown zusammen, kann PNG-Plots erzeugen und bleibt deterministisch (optional ohne Timestamp für Reprotests).
 - Seed-Strategien: `neighborhood3` (Baseline), `window_mean_3x3` (3x3 Fenster-Mittelwerte). YAML-Matrix (`seed_strategy`) und CLI (`--seed-strategy`) wählen die Strategie; `enc.json` speichert die genutzte Strategie.
+- Memory-Modelle: `opensimplex` (Default) und `perlin` (deterministisch, tokenbasierte Permutation). Auswahl via `--memory-type` bei `init`/CLI und `memory_type` in YAML-Matrix; CSV/JSON nutzen die Spalte `memory_type`.
+- BA1-Experiment-Kit (WSL): `bash scripts/run_ba1.sh` (nach `pip install -e .` und optional venv-Aktivierung). Outputs landen in `out/ba1/` (bench/analyze/report/plots + run_meta.txt). Make-Target: `make ba1`, aufräumen: `make clean-out`.
