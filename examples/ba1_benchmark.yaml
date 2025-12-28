@@ -1,5 +1,5 @@
 bench:
-  profile: alice
+  profile: tobi
   token: "secret"
   coord: [12, 34]
   nbytes: 1048576

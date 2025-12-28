@@ -4,6 +4,7 @@ import base64
 import csv
 import hashlib
 import itertools
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -24,6 +25,9 @@ from chaoscrypto.orchestrator.pipeline import (
 )
 from chaoscrypto.core.seed.base import get_seed_strategy, list_seed_strategies
 from chaoscrypto.core.memory.base import list_memory_models
+from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
+
+logger = get_logger(__name__)
 
 
 # -------------------------
@@ -292,6 +296,17 @@ def _keystream_and_metrics(
         result["t_decrypt_s"] = None
 
     result["keystream_sha256"] = hashlib.sha256(ks).hexdigest()
+    logger.debug(
+        "Keystream sha256=%s dt=%s warmup=%d quant_k=%s size=%d scale=%s seed_strategy=%s memory_type=%s",
+        result["keystream_sha256"],
+        dt,
+        warmup,
+        quant_k,
+        params.size,
+        params.scale,
+        seed_strategy,
+        params.type,
+    )
     if include_preview:
         result["keystream_preview_base64"] = base64.b64encode(ks[:preview_len]).decode("ascii")
     else:
@@ -412,6 +427,8 @@ def _run_single_variant(
 
 
 def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
+    setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+    set_command_context("benchmark")
     variants = _variant_product(config.matrix)
     tasks: List[Tuple[Dict[str, Any], int]] = []
     for variant in variants:
@@ -419,6 +436,8 @@ def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             tasks.append((variant, repeat_index))
 
     def runner(task: Tuple[Dict[str, Any], int]) -> Dict[str, Any]:
+        setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+        set_command_context("benchmark")
         variant, repeat_index = task
         return _run_single_variant(
             bench=config.bench,

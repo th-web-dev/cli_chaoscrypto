@@ -30,6 +30,7 @@ src/chaoscrypto/io/profiles.py
 src/chaoscrypto/orchestrator/__init__.py
 src/chaoscrypto/orchestrator/pipeline.py
 src/chaoscrypto/report/runner.py
+src/chaoscrypto/utils/logging.py
 src/chaoscrypto/utils/records.py
 src/chaoscrypto_wp2.egg-info/PKG-INFO
 src/chaoscrypto_wp2.egg-info/SOURCES.txt

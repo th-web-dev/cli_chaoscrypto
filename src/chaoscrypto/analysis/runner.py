@@ -5,6 +5,7 @@ import csv
 import hashlib
 import itertools
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,9 @@ from chaoscrypto.orchestrator.pipeline import (
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.core.memory.base import list_memory_models
 from chaoscrypto.core.seed.base import list_seed_strategies
+from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
+
+logger = get_logger(__name__)
 
 
 class ConfigError(Exception):
@@ -398,16 +402,34 @@ def _analyze_one(
         record["keystream_preview_base64"] = None
 
     record.update(metrics)
+    if record.get("keystream_sha256"):
+        logger.debug(
+            "Analyze keystream sha256=%s coord=(%d,%d) dt=%s warmup=%d quant_k=%s size=%d scale=%s seed_strategy=%s memory_type=%s",
+            record.get("keystream_sha256"),
+            variant["coord"][0],
+            variant["coord"][1],
+            variant["dt"],
+            variant["warmup"],
+            variant["quant_k"],
+            variant["size"],
+            variant["scale"],
+            variant["seed_strategy"],
+            variant["memory_type"],
+        )
     return record
 
 
 def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
+    setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+    set_command_context("analyze")
     variants = _variant_product(config.matrix, config.analyze.coords)
     tasks = variants
     token_bytes = config.analyze.token.encode(constants.ENCODING)
     token_fp = token_fingerprint(token_bytes)
 
     def runner(variant: Dict[str, Any]) -> Dict[str, Any]:
+        setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+        set_command_context("analyze")
         return _analyze_one(config, variant, token_bytes, token_fp)
 
     if jobs and jobs > 1:

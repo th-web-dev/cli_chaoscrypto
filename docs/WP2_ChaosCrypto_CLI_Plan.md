@@ -899,14 +899,70 @@ Phase 2 (Vergleichbarkeit) darf **erst beginnen**, wenn:
 
 ---
 
-## 12. Erwartete Ergebnisse
+## 12. Status, offene Punkte & nächste Schritte
 
-- vollständig deterministischer Core
-- minimaler, testbarer CLI-Workflow
-- stabile Grundlage für Vergleichs- und Benchmark-Phase
-- maximale Kontrolle über Systemkomplexität
+Dieser Abschnitt wird laufend gepflegt und dient als gemeinsame Wahrheit über den Projektstand.
+
+### 12.1 Status (erreicht)
+- MVP-Pipeline steht: `init` / `encrypt` / `decrypt` über Typer-CLI, deterministisch (Profile + Feld-Fingerprint).
+- Echtes OpenSimplex-Noise im Memory-Modul, Seed via Koordinate (Neighborhood3), Lorenz (Euler) mit parametrisierbarem `dt`/`warmup`/`quant_k`, Sampling via quantized x-Komponente, XOR.
+- Artefakte/Fingerprints in `~/.chaoscrypto/wp2/<profile>/profile.json`; `enc.json` enthält alle Repro-Metadaten.
+- Profile-Hilfsbefehle: `profile list`, `profile show`.
+- `selftest` vorhanden (Golden Vector, Exit ≠ 0 bei Fehler), ohne Dateien anzulegen.
+- `keystream` Command vorhanden (Bytes/Hex/Base64/Hash), deterministisch.
+- Benchmark v2 umgesetzt: YAML-Parsing/Validierung (pyyaml), Matrix-Generierung, deterministische Runs (Timing/Hashes/Optional-Preview), optionale Parallelisierung, deterministische Sortierung, CSV/JSON Export. Beispielconfig `examples/bench.yaml`.
+- Analyze v2 umgesetzt: YAML-driven Keystream-Statistiken (bit-balance, autocorr, runs, chi2 etc. je nach config), deterministisch, CSV/JSON Export, Tests grün.
+- Seed-Strategie-Erweiterung umgesetzt: `seed_strategy` als Plug-in/Registry; zusätzlich zu `neighborhood3` ist `window_mean_3x3` integriert. CLI + enc.json + benchmark/analyze YAML matrix unterstützen `seed_strategy`.
+- Memory-Model-Registry umgesetzt: neben `opensimplex` ist `perlin` als `memory_type` integriert. CLI init unterstützt `--memory-type`; benchmark/analyze/report sind `memory_type`-aware, Defaults auf `opensimplex` bei fehlendem Feld.
+- **Report v2 umgesetzt (seed- & memory-aware end-to-end):**
+  - Missing `seed_strategy` → default `neighborhood3`.
+  - Missing `memory_type` → default `opensimplex`.
+  - Gruppierung/Sortierung/Sektionen berücksichtigen `seed_strategy` + `memory_type`.
+  - Benchmark Summary: Global Top5 + Top pro `memory_type`/Seed.
+  - Analyze Summary: Metriken pro `memory_type`/Seed.
+  - Best Candidates: Top overall + Top je Seed/Memory.
+  - Plots: seed/memory-aware, stabile Dateinamen.
+  - Tests/Fixtures aktualisiert; alle Tests grün (`pytest -q`).
+- **Experiment Kit (BA1-ready) hinzugefügt:**
+  - `examples/ba1_benchmark.yaml` und `examples/ba1_analyze.yaml` (opensimplex/perlin, beide Seed-Strategien, warmup {100,1000,5000}, quant_k {1e5,1e7}, dt 0.01; benchmark repeats=3).
+  - `scripts/run_ba1.sh` (WSL-friendly): benchmark → analyze → report (plots) nach `out/ba1/...`, inkl. Env-Meta (date -u, python --version, uname -a, pip freeze), nutzt `--no-timestamp`.
+  - Make targets: `make ba1`, `make clean-out`.
+  - README ergänzt (WSL Run + Output-Pfade).
+  - Tests grün (aktuell: 25 passed).
+
+### 12.2 Offen / Verbessern
+- (Optional) Report v3 Polish für BA1:
+  - Relative Pfade im Markdown (keine absoluten /mnt/c/ Pfade), plots als `plots/...`.
+  - Klar getrennte Tabellen:
+    - *Top throughput per seed_strategy (best across memory types)* → genau 2 Zeilen.
+    - *Top throughput per seed_strategy and memory_type* → genau 4 Zeilen.
+  - Kurzer Abschnitt **Methodology Notes** im Report (repeats, Determinismus, Env-Meta, keine Security-Claims).
+  - Tests erweitern: keine absoluten Pfade, korrekte Tabellenlängen.
 
 ---
 
-*Motto für den MVP: „Erst korrekt, dann vergleichbar – nie umgekehrt.“*
+## 13 Abschluss & Übergang zu BA1
+
+### 13.1 Erreichter Projektstand (WP2)
+Das Wahlfachprojekt 2 liefert eine vollständig reproduzierbare CLI-basierte Experimentier- und Analyseumgebung für deterministisch-synchrone Schlüsselstromgenerierung auf Basis des Lorenz-Attraktors. Die Implementierung umfasst modulare Komponenten für Memory-Modelle, Seed-Strategien und Chaos-basierte Keystream-Erzeugung sowie eine YAML-gesteuerte Pipeline zur Benchmarking-, Analyse- und Report-Erstellung. Sämtliche Ergebnisse werden deterministisch erzeugt, versioniert und durch automatisierte Tests validiert.
+
+Mit dem integrierten **Experiment Kit (BA1-ready)** können alle in der Arbeit dargestellten Ergebnisse durch einen einzigen Skriptlauf reproduziert werden. Die erzeugten Artefakte (CSV/JSON, Plots, Markdown-Report sowie Umgebungsmetadaten) bilden eine belastbare Grundlage für die empirische Analyse im Rahmen der Bachelorarbeit.
+
+### 13.2 Abgrenzung zu BA1
+In WP2 liegt der Fokus auf der **Infrastruktur, Vergleichbarkeit und Reproduzierbarkeit**. Kryptographische Sicherheitsbewertungen oder Systemvergleiche jenseits des Lorenz-Attraktors sind explizit nicht Bestandteil dieses Projekts.
+
+Die Bachelorarbeit 1 baut unmittelbar auf WP2 auf und fokussiert sich auf:
+- die detaillierte Analyse des Lorenz-Attraktors als deterministische Quelle für Schlüsselströme,
+- den Einfluss numerischer Parameter (z. B. `dt`, `warmup`, `quant_k`),
+- statistische Eigenschaften der erzeugten Keystreams (Bit-Balance, Autokorrelation, Runs, Chi²),
+- sowie Performance- und Stabilitätsaspekte unter kontrollierten Experimentbedingungen.
+
+### 13.3 Übergang zu BA2 (Ausblick)
+Eine weiterführende Bachelorarbeit 2 kann auf Basis der etablierten Infrastruktur u. a. folgende Richtungen einschlagen:
+- Vergleich verschiedener chaotischer Systeme (z. B. Lorenz vs. diskrete Abbildungen),
+- systematische Einordnung chaosbasierter Keystreams gegenüber klassischen Stream-Ciphers,
+- Erweiterung des Synchronisations- und Seed-Konzepts (z. B. Forward-Secrecy, Trigger-Rotation),
+- oder eine sicherheitstechnische Einordnung im Kontext post-quantenkryptographischer Anforderungen.
+
+Damit ist WP2 abgeschlossen und bildet eine konsistente, getestete und dokumentierte Grundlage für die Bachelorarbeit 1.
 

@@ -6,7 +6,7 @@
 - Token: not stored; only fingerprints in source CSV
 
 ## Scope
-- Profile: alice
+- Profile: tobi
 - Coord: (12,34)
 - nbytes: 1048576
 - Seed strategies: ['neighborhood3', 'window_mean_3x3']
@@ -23,27 +23,27 @@ Top throughput overall (mean over repeats):
 
 | dt | warmup | quant_k | size | scale | seed_strategy | memory_type | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |
 |---|---|---|---|---|---|---|---|---|---|
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.301783 | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.303105 | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.306964 | 3.42e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
-| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.309454 | 3.39e+06 | 38dd69fdca01279ca3fc369fda15eee742eb40cf176fed4791c76a8a87ff283e |
-| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.30956 | 3.39e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.295372 | 3.55e+06 | b8ce10e014ed53eb9dfab2ce1e17997224a1d5923f62c790ec74ea5c0e611b26 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.302022 | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.303321 | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.305879 | 3.43e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
+| 0.01 | 100 | 10000000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.313002 | 3.35e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
 
 Top throughput per seed_strategy (best across memory types):
 
 | seed_strategy | dt | warmup | quant_k | memory_type | mean_tp_bps | keystream_sha256 |
 |---|---|---|---|---|---|---|
-| neighborhood3 | 0.01 | 100 | 100000.0 | perlin | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
+| neighborhood3 | 0.01 | 100 | 100000.0 | opensimplex | 3.55e+06 | b8ce10e014ed53eb9dfab2ce1e17997224a1d5923f62c790ec74ea5c0e611b26 |
 | window_mean_3x3 | 0.01 | 100 | 100000.0 | opensimplex | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
 
 Top throughput per seed_strategy and memory_type:
 
 | seed_strategy | memory_type | dt | warmup | quant_k | size | scale | mean_tp_bps | keystream_sha256 |
 |---|---|---|---|---|---|---|---|---|
-| neighborhood3 | opensimplex | 0.01 | 100 | 10000000.0 | 128 | 0.1 | 3.39e+06 | 227a776499831b3a19400f1f0f8cbbb909411312a9ec371b40a08699e81e050d |
+| neighborhood3 | opensimplex | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.55e+06 | b8ce10e014ed53eb9dfab2ce1e17997224a1d5923f62c790ec74ea5c0e611b26 |
 | neighborhood3 | perlin | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.47e+06 | 265c51e4280be77c31982f3c55a2b1b339de41d0027ccc77c4a1a9e931ea12ae |
 | window_mean_3x3 | opensimplex | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.46e+06 | 4c63b5572566e8129ff2fa6013d20b5bb7351efc6737ce642fee443db8dcf837 |
-| window_mean_3x3 | perlin | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.42e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
+| window_mean_3x3 | perlin | 0.01 | 100 | 100000.0 | 128 | 0.1 | 3.43e+06 | 8961d882e761a738a1d6523ee39a6a7a145531a4aa5c66a0d0dd5f162ec333a1 |
 
 ## Analyze Summary
 - Bit ones ratio min/mean/max: (0.499577, 0.500057, 0.500528)
@@ -52,6 +52,7 @@ Top throughput per seed_strategy and memory_type:
 - Autocorr lag1 min/mean/max: (-0.000823, 3.4e-05, 0.000742)
 
 Per seed_strategy / memory_type (mean values):
+
 | seed_strategy | memory_type | bit_ones_ratio | byte_chi2_norm | runs_norm_diff | autocorr_lag_1 |
 |---|---|---|---|---|---|
 | neighborhood3 | opensimplex | 0.500275 | 1.065996 | 0.000172 | -0.000345 |
@@ -88,23 +89,25 @@ Per seed_strategy / memory_type (mean values):
 
 ## Best Candidates (heuristic score)
 Top 5 overall:
+
 | dt | warmup | quant_k | size | scale | seed_strategy | memory_type | score | perf_score | rand_score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.977960 | 0.964579 | 0.986881 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.972765 | 1.000000 | 0.954609 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
-| 0.01 | 1000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.953063 | 0.903447 | 0.986140 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.949127 | 0.983121 | 0.926465 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
-| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | opensimplex | 0.942966 | 0.995576 | 0.907892 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.992128 | 1.000000 | 0.986881 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | neighborhood3 | perlin | 0.963975 | 0.978024 | 0.954609 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
+| 0.01 | 1000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.963248 | 0.928910 | 0.986140 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
+| 0.01 | 100 | 100000.0 | 128 | 0.1 | window_mean_3x3 | perlin | 0.942170 | 0.965727 | 0.926465 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
+| 0.01 | 5000 | 100000.0 | 128 | 0.1 | neighborhood3 | opensimplex | 0.935436 | 0.854500 | 0.989393 | 0.500528 | 0.000152 | -0.000076 | 1.009965 |
 
 Top 3 per seed_strategy:
+
 | seed_strategy | dt | warmup | quant_k | size | scale | memory_type | score | bit_ones_ratio | autocorr_lag_1 | runs_norm_diff | byte_chi2_norm |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.977960 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
-| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.972765 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
-| neighborhood3 | 0.01 | 1000 | 100000.0 | 128 | 0.1 | opensimplex | 0.953063 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.949127 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
-| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.942966 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
-| window_mean_3x3 | 0.01 | 5000 | 100000.0 | 128 | 0.1 | perlin | 0.931392 | 0.500237 | -0.000033 | 0.000017 | 1.056376 |
+| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.992128 | 0.500501 | 0.000108 | -0.000054 | 1.012630 |
+| neighborhood3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.963975 | 0.499951 | -0.000346 | 0.000173 | 0.953018 |
+| neighborhood3 | 0.01 | 1000 | 100000.0 | 128 | 0.1 | opensimplex | 0.963248 | 0.500505 | 0.000120 | -0.000060 | 1.013369 |
+| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | perlin | 0.942170 | 0.500280 | -0.000052 | 0.000026 | 1.079013 |
+| window_mean_3x3 | 0.01 | 100 | 100000.0 | 128 | 0.1 | opensimplex | 0.934302 | 0.500310 | 0.000188 | -0.000094 | 0.899140 |
+| window_mean_3x3 | 0.01 | 1000 | 100000.0 | 128 | 0.1 | perlin | 0.907189 | 0.500270 | -0.000032 | 0.000016 | 1.076170 |
 
 ## Plots
 ![](plots/bench/bench_throughput_dt0p01_q100000p0.png)

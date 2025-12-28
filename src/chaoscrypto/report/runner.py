@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from chaoscrypto.utils.records import normalize_record_memory_type
+from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
+
+logger = get_logger(__name__)
 
 
 def _parse_float(val: str | None) -> Optional[float]:
@@ -598,11 +601,14 @@ def generate_report(
     json_summary: Path | None = None,
     plot_mode: str = "condensed",
 ) -> Dict[str, Any]:
+    setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+    set_command_context("report")
     bench_rows = _read_csv(bench_csv)
     analyze_rows = _read_csv(analysis_csv)
 
     bench_aggs = _group_bench(bench_rows)
     analyze_aggs = _group_analyze(analyze_rows)
+    logger.debug("Report aggregation bench_variants=%d analyze_variants=%d", len(bench_aggs), len(analyze_aggs))
 
     timestamp = datetime.now(timezone.utc).isoformat() if include_timestamp else None
 

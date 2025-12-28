@@ -89,6 +89,19 @@ Kernschritte:
    cmp -s msg.txt dec.txt && echo "identisch"
    ```
 
+## Verbose Logging
+- Global Flags: `--verbose`/`-v` (INFO) und `--debug` (DEBUG, impliziert verbose) gelten für alle Kommandos.
+- Default bleibt minimal; Logging ändert keine Kryptographie, Fingerprints oder Outputs.
+- Beispiele:
+  - Encrypt transparent machen:
+    ```bash
+    .venv/bin/python -m chaoscrypto.cli.app encrypt -v --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
+    ```
+  - Benchmark mit Debug-Details (z. B. Feld-Fingerprints):
+    ```bash
+    .venv/bin/python -m chaoscrypto.cli.app benchmark --debug --config examples/bench.yaml --out results.csv
+    ```
+
 ## Hinweise für den Betrieb
 - Alles läuft deterministisch: gleicher Token + gleiche Parameter → identische Fingerprints und Keystreams.
 - Profile liegen in `~/.chaoscrypto/wp2/<profile>/` (WSL-Home).

@@ -1,31 +1,34 @@
 bench:
-  profile: alice
-  token: "secret"
-  coord: [12, 34]
-  nbytes: 4096
-  repeats: 2
-  field_regen_each_repeat: true
-
+  profile: alice                          # Verwendetes CLI-Profil (lokale Konfiguration, z.B. Memory-Typ)
+  token: "secret"                         # Gemeinsames geheimes Token zur deterministischen Rekonstruktion des Memory-Feldes
+  coord: [12, 34]                         # Koordinaten im Memory-Feld zur Ableitung des Initialzustands (Seed)
+  nbytes: 4096                            # Anzahl der zu generierenden Schlüsselstrom-Bytes pro Durchlauf
+  repeats: 15                             # Anzahl der Wiederholungen pro Parameterkombination
+  field_regen_each_repeat: true           # Erzwingt die Neuberechnung des Memory-Feldes bei jedem Durchlauf,
+                                          # um Effekte von Caching oder persistiertem Zustand auszuschließen
 matrix:
-  dt: [0.01]
-  warmup: [100, 1000]
-  quant_k: [100000.0]
-  size: [128]
-  scale: [0.1]
-  seed_strategy: ["neighborhood3", "window_mean_3x3"]
+  dt: [0.01]                              # Integrationsschrittweite Δt für das Euler-Verfahren des Lorenz-Systems
+  warmup: [100, 1000]                     # Anzahl der Warmup-Iterationen zur Eliminierung transienter Effekte
+  quant_k: [100000.0]                     # Skalierungsfaktor für die Quantisierung kontinuierlicher Zustandswerte
+  size: [128]                             # Kantenlänge des quadratischen Memory-Feldes (size × size)
+  scale: [0.1]                            # Skalenparameter des Noise-Modells (räumliche Glattheit)
+  seed_strategy:
+    - "neighborhood3"                     # Ableitung der Initialwerte aus direkter Nachbarschaft
+    - "window_mean_3x3"                   # Ableitung über Mittelwertbildung eines 3×3-Fensters
 
 metrics:
-  include_field_time: true
-  include_xor_time: true
-  include_decrypt_time: false
-  keystream_hash: sha256
+  include_field_time: true                # Erfasst die Zeit zur Generierung des Memory-Feldes
+  include_xor_time: true                  # Erfasst die Zeit für die XOR-Verknüpfung von Klartext und Schlüsselstrom
+  include_decrypt_time: false             # Entschlüsselungszeit wird nicht separat gemessen
+  keystream_hash: sha256                  # Kryptographischer Hash des Schlüsselstroms zur Vergleichbarkeit
 
 output:
-  include_timestamp_utc: true
-  include_field_fingerprint: true
-  include_keystream_preview: false
-  keystream_preview_bytes: 64
+  include_timestamp_utc: true             # Fügt UTC-Zeitstempel zur Ergebnisdatei hinzu
+  include_field_fingerprint: true         # Speichert einen Hash-Fingerprint des Memory-Feldes
+  include_keystream_preview: false        # Kein direkter Dump des Schlüsselstroms (Sicherheits- und Platzgründe)
+  keystream_preview_bytes: 64             # Länge des optionalen Vorschau-Ausschnitts (falls aktiviert)
 
 validate:
-  assert_deterministic_within_run: true
-  extra_determinism_check: false
+  assert_deterministic_within_run: true   # Prüft, ob Wiederholungen mit identischen Parametern identische Ergebnisse liefern
+  extra_determinism_check: false          # Zusätzliche, strengere Determinismus-Checks (hier deaktiviert)
+

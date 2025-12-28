@@ -21,20 +21,28 @@ from chaoscrypto.core.memory import perlin  # noqa: F401
 from chaoscrypto.core.sampling.quantize_byte import QuantizeByteSampling
 from chaoscrypto.core.seed.base import get_seed_strategy
 from chaoscrypto.core.seed import strategies  # noqa: F401 (registers strategies)
+from chaoscrypto.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_memory_field(
     token_bytes: bytes, params: MemoryParams
 ) -> tuple[np.ndarray, str]:
+    logger.debug("Generating memory field type=%s size=%d scale=%s", params.type, params.size, params.scale)
     model: MemoryModel = get_memory_model(params.type)
     field = model.generate(token_bytes, params)
     fingerprint = MemoryModel.fingerprint(field)
+    logger.debug("Memory field fingerprint=%s", fingerprint)
     return field, fingerprint
 
 
 def derive_initial_state(field: np.ndarray, coord: tuple[int, int], seed_strategy: str) -> tuple[float, float, float]:
     strategy = get_seed_strategy(seed_strategy)
-    return strategy.derive_init(field, coord)
+    logger.debug("Deriving initial state using seed_strategy=%s coord=(%d,%d)", seed_strategy, coord[0], coord[1])
+    init_state = strategy.derive_init(field, coord)
+    logger.debug("Lorenz init state x0=%.6f y0=%.6f z0=%.6f", init_state[0], init_state[1], init_state[2])
+    return init_state
 
 
 def generate_keystream(
@@ -44,6 +52,7 @@ def generate_keystream(
     warmup: int = DEFAULT_WARMUP,
     quant_k: float = DEFAULT_QUANT_K,
 ) -> bytes:
+    logger.debug("Generating keystream nbytes=%d dt=%s warmup=%d quant_k=%s", num_bytes, dt, warmup, quant_k)
     system = LorenzSystem(
         x=init_state[0],
         y=init_state[1],
