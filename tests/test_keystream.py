@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -58,7 +59,7 @@ def test_keystream_determinism(tmp_path, monkeypatch):
 
     assert res1.exit_code == 0, res1.output
     assert res2.exit_code == 0, res2.output
-    assert res1.output.strip() == res2.output.strip()
+    assert extract_raw_hash(res1.output) == extract_raw_hash(res2.output)
 
 
 def test_keystream_matches_encrypt_internal_keystream(tmp_path, monkeypatch):
@@ -184,7 +185,7 @@ def test_keystream_parameter_variation_changes_hash(tmp_path, monkeypatch):
 
     assert res_default.exit_code == 0, res_default.output
     assert res_modified.exit_code == 0, res_modified.output
-    assert res_default.output.strip() != res_modified.output.strip()
+    assert extract_raw_hash(res_default.output) != extract_raw_hash(res_modified.output)
 
 
 def test_keystream_smoke_hash_default(tmp_path, monkeypatch):
@@ -221,4 +222,11 @@ def test_keystream_smoke_hash_default(tmp_path, monkeypatch):
         ],
     )
     assert res.exit_code == 0, res.output
-    assert res.output.strip() == hashlib.sha256(b"").hexdigest()
+    assert extract_raw_hash(res.output) == hashlib.sha256(b"").hexdigest()
+
+
+def extract_raw_hash(output: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    hex_lines = [line for line in lines if re.fullmatch(r"[0-9a-f]{64}", line)]
+    assert hex_lines, f"No SHA-256 hash line found in output: {output}"
+    return hex_lines[-1]

@@ -7,12 +7,14 @@ from typing import Tuple, List
 import typer
 
 from chaoscrypto.core import constants
+from chaoscrypto.core.crypto.xor import xor_bytes
 from chaoscrypto.core.memory.base import MemoryParams
 from chaoscrypto.io.formats import decode_ciphertext, encode_ciphertext, read_json, write_json
 from chaoscrypto.io.profiles import (
     load_profile_meta,
     memory_params_from_meta,
     profile_exists,
+    profile_meta_path,
     save_profile_meta,
     token_fingerprint,
     profiles_root,
@@ -42,34 +44,24 @@ from chaoscrypto.orchestrator.pipeline import (
     build_memory_field,
     derive_initial_state,
     generate_keystream,
-    decrypt_bytes,
     encrypt_bytes,
 )
 from chaoscrypto.utils.logging import get_logger, resolve_log_level, set_command_context, setup_logging
+from chaoscrypto.cli.ui import (
+    print_run_header,
+    print_io_read,
+    print_io_write,
+    print_noise_excerpt,
+    print_keystream_preview,
+    print_cipher_metadata,
+    print_preview_bytes,
+    print_variant_lines,
+    print_done,
+)
 
 app = typer.Typer(help="ChaosCrypto WP2 CLI (MVP)")
 profile_app = typer.Typer(help="Profile utilities (list/show)")
 logger = get_logger(__name__)
-NOISE_PREVIEW_SIZE = 25
-NOISE_PREVIEW_PRECISION = 3
-
-
-def render_noise_preview(field, offset: Tuple[int, int]) -> str:
-    size = field.shape[0]
-    x0, y0 = offset
-    if x0 < 0 or y0 < 0 or x0 + NOISE_PREVIEW_SIZE > size or y0 + NOISE_PREVIEW_SIZE > size:
-        raise typer.BadParameter(f"noise preview offset out of bounds for size {size}")
-    header = f"Noise field preview ({NOISE_PREVIEW_SIZE}x{NOISE_PREVIEW_SIZE})"
-    if offset != (0, 0):
-        header = f"{header} at offset ({x0},{y0})"
-    lines = [f"{header}:", "["]
-    for x in range(x0, x0 + NOISE_PREVIEW_SIZE):
-        row = []
-        for y in range(y0, y0 + NOISE_PREVIEW_SIZE):
-            row.append(f"{float(field[x, y]): .{NOISE_PREVIEW_PRECISION}f}")
-        lines.append(f"  [ {', '.join(row)} ]")
-    lines.append("]")
-    return "\n".join(lines)
 
 
 @app.callback()
@@ -127,17 +119,28 @@ def init(
 
     params = MemoryParams(type=memory_type, size=size, scale=scale)
     token_bytes = token.encode(constants.ENCODING)
+    token_fp = token_fingerprint(token_bytes)
+    profile_dir_path = profile_dir(profile)
+    profile_meta = profile_meta_path(profile)
+    print_run_header(
+        "init",
+        profile_name=profile,
+        profile_dir_path=profile_dir_path,
+        profile_files=[profile_meta],
+        memory_params=params,
+        token_fingerprint=token_fp,
+    )
 
     field, field_fp = build_memory_field(token_bytes, params)
-    if print_noise_preview:
-        typer.echo(render_noise_preview(field, parse_coord(noise_preview_offset)))
+    print_noise_excerpt(field, coord=None, window=2)
     meta = {
         "version": constants.VERSION,
         "memory": {"type": params.type, "size": params.size, "scale": params.scale},
         "field_fingerprint": field_fp,
-        "token_fingerprint": token_fingerprint(token_bytes),
+        "token_fingerprint": token_fp,
     }
-    save_profile_meta(profile, meta)
+    meta_path = save_profile_meta(profile, meta)
+    print_io_write(meta_path)
     logger.info("Profile '%s' initialized with memory_type=%s size=%d scale=%s", profile, params.type, params.size, params.scale)
     logger.debug("Stored field fingerprint=%s", field_fp)
 
@@ -145,6 +148,7 @@ def init(
         f"Profile '{profile}' ready. field_fingerprint={field_fp}",
         fg=typer.colors.GREEN,
     )
+    print_done("profile initialized")
 
 
 @app.command()
@@ -175,16 +179,31 @@ def encrypt(
         raise typer.Exit(code=1)
     token_bytes = token.encode(constants.ENCODING)
     coord_tuple = parse_coord(coord)
+    token_fp = token_fingerprint(token_bytes)
+    print_run_header(
+        "encrypt",
+        profile_name=profile,
+        profile_dir_path=profile_dir(profile),
+        profile_files=[profile_meta_path(profile)],
+        memory_params=params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy,
+        coord=coord_tuple,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+    )
     logger.info("Using profile=%s memory_type=%s coord=(%d,%d)", profile, params.type, coord_tuple[0], coord_tuple[1])
 
     field, field_fp = build_memory_field(token_bytes, params)
     if field_fp != meta["field_fingerprint"]:
         typer.secho("Token or parameters mismatch (field fingerprint differs).", fg=typer.colors.RED)
         raise typer.Exit(code=1)
-    if print_noise_preview:
-        typer.echo(render_noise_preview(field, parse_coord(noise_preview_offset)))
+    print_noise_excerpt(field, coord=coord_tuple, window=2)
 
+    print_io_read(input_path)
     plaintext = input_path.read_bytes()
+    print_preview_bytes("plaintext", plaintext, n=16, warning=True)
     if seed_strategy not in list_seed_strategies():
         typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
@@ -203,6 +222,12 @@ def encrypt(
     )
     assert computed_fp == field_fp  # sanity check
     logger.info("Input size=%d bytes", len(plaintext))
+    print_preview_bytes("ciphertext", ciphertext, n=16, warning=True)
+    keystream = xor_bytes(plaintext, ciphertext)
+    import hashlib
+
+    keystream_sha256 = hashlib.sha256(keystream).hexdigest()
+    print_keystream_preview(keystream, n=16, sha256_hex=keystream_sha256)
 
     enc_payload = {
         "version": constants.VERSION,
@@ -222,8 +247,20 @@ def encrypt(
     }
 
     write_json(output_path, enc_payload)
+    print_io_write(output_path)
+    print_cipher_metadata(
+        coord=coord_tuple,
+        seed_strategy=seed_strategy,
+        params=params,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        keystream_sha256=keystream_sha256,
+        label="enc.json metadata:",
+    )
     logger.info("Encrypted payload written to %s", output_path)
     typer.secho(f"Encrypted → {output_path}", fg=typer.colors.GREEN)
+    print_done("encryption complete")
 
 
 @app.command()
@@ -296,26 +333,52 @@ def decrypt(
     logger.debug("Expected field fingerprint=%s", expected_fp)
 
     ciphertext = decode_ciphertext(enc_payload["ciphertext"])
-    try:
-        plaintext = decrypt_bytes(
-            ciphertext,
-            token_bytes=token_bytes,
-            coord=coord_tuple,
-            params=params,
-            expected_fingerprint=expected_fp,
-            seed_strategy=seed_strategy,
-            dt=dt,
-            warmup=warmup,
-            quant_k=quant_k,
-        )
-    except ValueError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED)
-        raise typer.Exit(code=1) from exc
+    token_fp = token_fingerprint(token_bytes)
+    print_run_header(
+        "decrypt",
+        profile_name=profile,
+        profile_dir_path=profile_dir(profile),
+        profile_files=[profile_meta_path(profile)],
+        memory_params=params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy,
+        coord=coord_tuple,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+    )
+    print_io_read(input_path)
+
+    field, field_fp = build_memory_field(token_bytes, params)
+    if expected_fp and field_fp != expected_fp:
+        typer.secho("Field fingerprint mismatch – token or parameters differ.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    print_noise_excerpt(field, coord=coord_tuple, window=2)
+    init_state = derive_initial_state(field, coord_tuple, seed_strategy=seed_strategy)
+    keystream = generate_keystream(len(ciphertext), init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    plaintext = xor_bytes(ciphertext, keystream)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(plaintext)
+    print_io_write(output_path)
+    print_preview_bytes("recovered_plaintext", plaintext, n=16, warning=True)
+    import hashlib
+
+    keystream_sha256 = hashlib.sha256(keystream).hexdigest()
+    print_keystream_preview(keystream, n=16, sha256_hex=keystream_sha256)
+    print_cipher_metadata(
+        coord=coord_tuple,
+        seed_strategy=seed_strategy,
+        params=params,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        keystream_sha256=keystream_sha256,
+        label="enc.json metadata:",
+    )
     logger.info("Plaintext written to %s", output_path)
     typer.secho(f"Decrypted → {output_path}", fg=typer.colors.GREEN)
+    print_done("decryption complete")
 
 
 @app.command()
@@ -367,6 +430,7 @@ def keystream(
     params = memory_params_from_meta(meta)
     token_bytes = token.encode(constants.ENCODING)
     coord_tuple = parse_coord(coord)
+    token_fp = token_fingerprint(token_bytes)
 
     if memory_type is None:
         memory_type = params.type
@@ -378,12 +442,25 @@ def keystream(
         raise typer.Exit(code=1)
 
     params = MemoryParams(type=memory_type, size=params.size, scale=params.scale)
+    print_run_header(
+        "keystream",
+        profile_name=profile,
+        profile_dir_path=profile_dir(profile),
+        profile_files=[profile_meta_path(profile)],
+        memory_params=params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy,
+        coord=coord_tuple,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        nbytes=nbytes,
+    )
     field, field_fp = build_memory_field(token_bytes, params)
     if field_fp != meta["field_fingerprint"]:
         typer.secho("Token or parameters mismatch (field fingerprint differs).", fg=typer.colors.RED)
         raise typer.Exit(code=1)
-    if print_noise_preview:
-        typer.echo(render_noise_preview(field, parse_coord(noise_preview_offset)))
+    print_noise_excerpt(field, coord=coord_tuple, window=2)
     logger.info("Using profile=%s memory_type=%s coord=(%d,%d)", profile, params.type, coord_tuple[0], coord_tuple[1])
 
     init_state = derive_initial_state(field, coord_tuple, seed_strategy=seed_strategy)
@@ -420,6 +497,7 @@ def keystream(
                 writer.writerow(["step", "phase", "x", "y", "z"])
                 for step, phase, x, y, z in trajectory:
                     writer.writerow([step, phase, f"{x:.6f}", f"{y:.6f}", f"{z:.6f}"])
+            print_io_write(dump_trajectory)
             typer.secho(f"Wrote trajectory CSV → {dump_trajectory}", fg=typer.colors.GREEN)
 
         if plot_trajectory:
@@ -446,6 +524,7 @@ def keystream(
             fig.tight_layout()
             fig.savefig(plot_trajectory)
             plt.close(fig)
+            print_io_write(plot_trajectory)
             typer.secho(f"Wrote trajectory plot → {plot_trajectory}", fg=typer.colors.GREEN)
     else:
         ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
@@ -461,25 +540,31 @@ def keystream(
         warmup,
         quant_k,
     )
+    print_keystream_preview(ks, n=16, sha256_hex=ks_hash)
 
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(ks)
+        print_io_write(out)
         typer.secho(f"Wrote keystream bytes → {out}", fg=typer.colors.GREEN)
+        print_done("keystream generated")
         return
 
     if hex_out:
         typer.echo(ks.hex())
+        print_done("keystream generated")
         return
 
     if base64_out:
         import base64
 
         typer.echo(base64.b64encode(ks).decode("ascii"))
+        print_done("keystream generated")
         return
 
     if hash_out:
         typer.echo(ks_hash)
+        print_done("keystream generated")
         return
 
 
@@ -577,6 +662,7 @@ def benchmark(
         raise typer.Exit(code=1)
     profile_meta = load_profile_meta(cfg.bench.profile)
     profile_params = memory_params_from_meta(profile_meta)
+    token_fp = token_fingerprint(cfg.bench.token.encode(constants.ENCODING))
     if any(val != profile_params.size for val in cfg.matrix.size):
         typer.secho("Matrix size values must match the profile size.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
@@ -611,6 +697,25 @@ def benchmark(
         * len(cfg.matrix.memory_type)
     )
     run_count = variant_count * cfg.bench.repeats
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    print_run_header(
+        "benchmark",
+        profile_name=cfg.bench.profile,
+        profile_dir_path=profile_dir(cfg.bench.profile),
+        profile_files=[profile_meta_path(cfg.bench.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=cfg.bench.coord,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.bench.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.bench.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    print_noise_excerpt(field, coord=cfg.bench.coord, window=2)
     logger.info(
         "Loaded benchmark config=%s profile=%s variants=%d runs=%d memory_types=%s seed_strategies=%s",
         config,
@@ -627,6 +732,18 @@ def benchmark(
         typer.secho(f"Benchmark failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    print_variant_lines(
+        "bench",
+        [
+            (
+                "coord=({coord_x},{coord_y}) repeat={repeat_index} dt={dt} warmup={warmup} quant_k={quant_k} "
+                "seed_strategy={seed_strategy} memory_type={memory_type} ks_sha256={keystream_sha256} "
+                "throughput_bps={throughput_keystream_bps}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
     try:
         write_csv(out, records)
         if out_json:
@@ -635,6 +752,9 @@ def benchmark(
         typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
     logger.info("Benchmark CSV written to %s", out)
     if out_json:
         logger.info("Benchmark JSON written to %s", out_json)
@@ -642,6 +762,7 @@ def benchmark(
     typer.secho(f"Benchmark complete. CSV → {out}", fg=typer.colors.GREEN)
     if out_json:
         typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("benchmark complete")
 
     if json_summary:
         import json
@@ -678,6 +799,7 @@ def analyze(
         raise typer.Exit(code=1)
     profile_meta = load_profile_meta(cfg.analyze.profile)
     profile_params = memory_params_from_meta(profile_meta)
+    token_fp = token_fingerprint(cfg.analyze.token.encode(constants.ENCODING))
     if any(val != profile_params.size for val in cfg.matrix.size):
         typer.secho("Matrix size values must match the profile size.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
@@ -712,6 +834,27 @@ def analyze(
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
     )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "analyze",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
     logger.info(
         "Loaded analyze config=%s profile=%s variants=%d memory_types=%s seed_strategies=%s",
         config,
@@ -727,6 +870,17 @@ def analyze(
         typer.secho(f"Analyze failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    print_variant_lines(
+        "analyze",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} ks_sha256={keystream_sha256} bit_ones_ratio={bit_ones_ratio}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
     max_autocorr = cfg.metrics.autocorr_bits_max_lag if cfg.metrics.autocorr_bits_enabled else 0
     try:
         write_analyze_csv(out, records, max_autocorr=max_autocorr)
@@ -736,12 +890,16 @@ def analyze(
         typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
     typer.secho(f"Analyze complete. CSV → {out}", fg=typer.colors.GREEN)
     if out_json:
         typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
     logger.info("Analyze CSV written to %s", out)
     if out_json:
         logger.info("Analyze JSON written to %s", out_json)
+    print_done("analysis complete")
     if json_summary:
         import json
 
@@ -769,6 +927,20 @@ def report(
 ):
     """Generate a markdown report (and optional plots) from benchmark/analyze outputs."""
     set_command_context("report")
+    print_run_header(
+        "report",
+        profile_name=None,
+        profile_dir_path=None,
+        profile_files=None,
+        memory_params=None,
+        token_fingerprint=None,
+    )
+    print_io_read(bench_csv)
+    print_io_read(analysis_csv)
+    if bench_json:
+        print_io_read(bench_json)
+    if analysis_json:
+        print_io_read(analysis_json)
     logger.info(
         "Generating report from bench_csv=%s analysis_csv=%s plots_dir=%s plot_mode=%s",
         bench_csv,
@@ -799,11 +971,15 @@ def report(
         summary.get("analyze_variants"),
     )
 
+    print_io_write(out)
     typer.secho(f"Report written → {out}", fg=typer.colors.GREEN)
     if plots_dir:
+        print_io_write(plots_dir)
         typer.secho(f"Plots in → {plots_dir}", fg=typer.colors.GREEN)
     if json_summary:
+        print_io_write(json_summary)
         typer.secho(f"Summary JSON → {json_summary}", fg=typer.colors.GREEN)
+    print_done("report complete")
     if json_flag:
         import json
 
