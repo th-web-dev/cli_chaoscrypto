@@ -7,6 +7,7 @@ src/chaoscrypto/bench/__init__.py
 src/chaoscrypto/bench/runner.py
 src/chaoscrypto/cli/__init__.py
 src/chaoscrypto/cli/app.py
+src/chaoscrypto/cli/ui.py
 src/chaoscrypto/core/__init__.py
 src/chaoscrypto/core/constants.py
 src/chaoscrypto/core/chaos/__init__.py

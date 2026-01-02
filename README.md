@@ -1,105 +1,249 @@
 # ChaosCrypto WP2 (CLI)
 
-Dieses Repo enthält den minimalen, deterministischen ChaosCrypto-CLI-Prototyp (WP2-MVP).
+Deterministic ChaosCrypto CLI (WP2 MVP). This README is Windows-first and includes Linux/macOS notes.
+Quick copy-paste setup is also in `QUICKSTART.md`.
 
-Kernschritte:
-- Token → Memory (deterministisches OpenSimplex-Noise-Feld)
-- Seed aus Koordinate (Neighborhood3)
-- Lorenz-System (Euler-Integration)
-- Keystream aus x-Komponente (quantisiert)
-- XOR für Ver- und Entschlüsselung
+## Quickstart (Windows)
 
-## Schnellstart (WSL, ohne Vorkenntnisse)
+### Prereqs
 
-1) **In WSL ins Projektverzeichnis wechseln**  
-   Beispiel: `cd /mnt/c/Users/WP2`
+- Windows 10/11
+- Python 3.10+ (`py -3.11 --version` recommended)
+- Git for Windows
+- PowerShell (default on Windows)
+- Optional: WSL (Ubuntu) as a fallback
 
-2) **Virtuelle Umgebung anlegen (sauber und lokal)**  
-   ```bash
-   python3 -m venv .venv --without-pip
-   python3 -m pip install --break-system-packages --target .venv/lib/python3.12/site-packages pip
-   .venv/bin/python -m pip install --break-system-packages -r requirements.txt
-   .venv/bin/python -m pip install --break-system-packages -e .
-   ```
+### 1) Clone the repo
 
-3) **Funktionstest ausführen**  
-   ```bash
-   .venv/bin/python -m pytest -q
-   ```  
-   (Sollte “3 passed” melden.)
+PowerShell:
+```powershell
+git clone https://github.com/th-web-dev/cli_chaoscrypto
+cd cli_chaoscrypto
+```
 
-4) **Beispielnutzung**  
-   - Profil anlegen (speichert Fingerprint, keine Klartext-Token):
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app init --profile alice --token "secret" --size 128 --scale 0.1
-     ```
-   - Datei verschlüsseln:
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
-     ```
-   - Wieder entschlüsseln:
-      ```bash
-      .venv/bin/python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
-      ```
-   - Optional steuerbar: `--dt`, `--warmup`, `--quant-k` bei `encrypt` setzen (werden in `enc.json` gespeichert und bei `decrypt` geprüft).
-   - Seed-Strategien:
-     - `neighborhood3` (Baseline)
-     - `window_mean_3x3` (3x3-Fenstermittelwerte)
-     Beispiel:
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json --seed-strategy window_mean_3x3
-     ```
-   - Keystream (für Bench/Analyse, deterministisch):
-     ```bash
-     # SHA-256 Hash (Default-Output)
-     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 1024
-     # Rohbytes in Datei
-     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 1024 --out ks.bin
-     # Hex/Base64 nach stdout
-     .venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 16 --hex
-     ```
-   - Benchmark (YAML-gesteuert, keine enc.json; rein im RAM):
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app benchmark --config examples/bench.yaml --out results.csv --out-json results.json
-     ```
-     `--json` gibt eine kurze Summary nach stdout; `--jobs` parallelisiert Varianten (deterministische Sortierung).
-   - Analyze (YAML-gesteuerte Keystream-Statistiken, RAM-only):
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app analyze --config examples/analyze.yaml --out analysis.csv --out-json analysis.json
-     ```
-   - Report (Markdown + optional Plots/JSON) aus Benchmark/Analyze-Outputs:
-     ```bash
-     .venv/bin/python -m chaoscrypto.cli.app report --bench-csv results.csv --analysis-csv analysis.csv --out report.md --plots-dir plots
-     ```
+Bash (Linux/macOS/WSL):
+```bash
+git clone https://github.com/th-web-dev/cli_chaoscrypto
+cd cli_chaoscrypto
+```
 
-5) **Ergebnis prüfen**  
-   ```bash
-   cmp -s msg.txt dec.txt && echo "identisch"
-   ```
+### 2) Create a virtual environment
 
-## Verbose Logging
-- Global Flags: `--verbose`/`-v` (INFO) und `--debug` (DEBUG, impliziert verbose) gelten für alle Kommandos.
-- Default bleibt minimal; Logging ändert keine Kryptographie, Fingerprints oder Outputs.
-- Beispiele:
-  - Encrypt transparent machen:
-    ```bash
-    .venv/bin/python -m chaoscrypto.cli.app encrypt -v --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
-    ```
-  - Benchmark mit Debug-Details (z. B. Feld-Fingerprints):
-    ```bash
-    .venv/bin/python -m chaoscrypto.cli.app benchmark --debug --config examples/bench.yaml --out results.csv
-    ```
+PowerShell:
+```powershell
+py -3.11 -m venv .venv
+```
 
-## Hinweise für den Betrieb
-- Alles läuft deterministisch: gleicher Token + gleiche Parameter → identische Fingerprints und Keystreams.
-- Profile liegen in `~/.chaoscrypto/wp2/<profile>/` (WSL-Home).
-- Das Noise-Feld wird bei Bedarf aus Token/Parametern deterministisch neu erzeugt (kein Cache).
-- CLI-Parameter können bei `encrypt` (dt, warmup, quant_k) gesetzt werden; Lorenz-Parameter bleiben fix.
-- Hilfsbefehle: `profile list`, `profile show`, `selftest` (Golden-Vector).
-- `keystream` ist die Grundlage für Benchmark und Analyse und garantiert reproduzierbare Keystreams (identisch zur Encrypt-Pipeline).
-- `benchmark` nutzt eine YAML-Matrix, generiert deterministische Keystreams im RAM, misst Zeiten/Hashes und schreibt CSV/JSON. Token wird nie im Klartext gespeichert (nur Fingerprint).
-- `analyze` baut auf derselben Matrix-Logik auf und berechnet deterministische Keystream-Metriken (Bit-Balance, Histogram/Chi², Autocorr, Runs, Hamming-Weights); Outputs CSV/JSON, keine enc.json, Token bleibt verborgen.
-- `report` fasst Benchmark/Analyze-Outputs in Markdown zusammen, kann PNG-Plots erzeugen und bleibt deterministisch (optional ohne Timestamp für Reprotests).
-- Seed-Strategien: `neighborhood3` (Baseline), `window_mean_3x3` (3x3 Fenster-Mittelwerte). YAML-Matrix (`seed_strategy`) und CLI (`--seed-strategy`) wählen die Strategie; `enc.json` speichert die genutzte Strategie.
-- Memory-Modelle: `opensimplex` (Default) und `perlin` (deterministisch, tokenbasierte Permutation). Auswahl via `--memory-type` bei `init`/CLI und `memory_type` in YAML-Matrix; CSV/JSON nutzen die Spalte `memory_type`.
-- BA1-Experiment-Kit (WSL): `bash scripts/run_ba1.sh` (nach `pip install -e .` und optional venv-Aktivierung). Outputs landen in `out/ba1/` (bench/analyze/report/plots + run_meta.txt). Make-Target: `make ba1`, aufräumen: `make clean-out`.
+Bash (Linux/macOS/WSL):
+```bash
+python3 -m venv .venv
+```
+
+### 3) Install dependencies
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
+```
+
+### 4) Smoke test the CLI
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app --help
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m chaoscrypto.cli.app --help
+```
+
+If you see the CLI help, you are ready.
+
+### Troubleshooting (Windows)
+
+- Execution policy blocks scripts: use `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` for the current PowerShell session.
+- Python not found: install from https://www.python.org/downloads and re-open PowerShell; use `py -3.11` if multiple versions are installed.
+- Long paths: enable Windows long paths (Group Policy/Registry) or run `git config --global core.longpaths true`.
+- Pip issues: upgrade pip and wheel in the venv with `python -m pip install --upgrade pip wheel`.
+
+## Two ways to run
+
+### A) Native Windows (recommended if it works)
+
+Use the Windows venv Python:
+```powershell
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app --help
+```
+
+Profiles are stored in:
+- `%USERPROFILE%\.chaoscrypto\wp2\<profile>\profile.json`
+
+### B) WSL (Ubuntu) fallback
+
+Open WSL in the repo folder (example path shown):
+```bash
+cd /mnt/c/Users/<you>/chaoscrypto-wp2
+```
+
+Use the WSL venv Python:
+```bash
+.venv/bin/python -m chaoscrypto.cli.app --help
+```
+
+Profiles are stored in:
+- `~/.chaoscrypto/wp2/<profile>/profile.json`
+
+## Install / Verify
+
+Install (editable) and verify:
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app --help
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m chaoscrypto.cli.app --help
+```
+
+## Minimal demo workflow (5 minutes)
+
+### Step 1: init profile
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app init --profile alice --token "secret" --memory-type opensimplex --size 128 --scale 0.1
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m chaoscrypto.cli.app init --profile alice --token "secret" --memory-type opensimplex --size 128 --scale 0.1
+```
+
+Expected:
+- A profile folder is created under your home directory.
+- `profile.json` is written with memory parameters and token fingerprint (no raw token stored).
+
+### Step 2: generate keystream
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 32
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 32
+```
+
+Expected:
+- A short keystream preview on stdout and a SHA-256 hash.
+
+### Step 3: encrypt and decrypt a small message
+
+PowerShell:
+```powershell
+"hello from ChaosCrypto" | Set-Content -Encoding utf8 msg.txt
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+echo "hello from ChaosCrypto" > msg.txt
+.venv/bin/python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json
+.venv/bin/python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt
+```
+
+Expected:
+- `enc.json` created in the working directory.
+- `dec.txt` matches `msg.txt`.
+
+## Evaluation workflow (BA1 / WP2 pipeline)
+
+Use the provided configs (examples) and write outputs to `out/ba1`.
+
+PowerShell:
+```powershell
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app benchmark --config examples/ba1_benchmark.yaml --out out/ba1/bench/results.csv --out-json out/ba1/bench/results.json
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app analyze --config examples/ba1_analyze.yaml --out out/ba1/analyze/analysis.csv --out-json out/ba1/analyze/analysis.json
+.\.venv\Scripts\python.exe -m chaoscrypto.cli.app report --bench-csv out/ba1/bench/results.csv --analysis-csv out/ba1/analyze/analysis.csv --out out/ba1/report/report.md --plots-dir out/ba1/report/plots --no-timestamp
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+.venv/bin/python -m chaoscrypto.cli.app benchmark --config examples/ba1_benchmark.yaml --out out/ba1/bench/results.csv --out-json out/ba1/bench/results.json
+.venv/bin/python -m chaoscrypto.cli.app analyze --config examples/ba1_analyze.yaml --out out/ba1/analyze/analysis.csv --out-json out/ba1/analyze/analysis.json
+.venv/bin/python -m chaoscrypto.cli.app report --bench-csv out/ba1/bench/results.csv --analysis-csv out/ba1/analyze/analysis.csv --out out/ba1/report/report.md --plots-dir out/ba1/report/plots --no-timestamp
+```
+
+Optional scripts:
+- PowerShell: `scripts/run_ba1.ps1` (run with `powershell -ExecutionPolicy Bypass -File scripts\\run_ba1.ps1`)
+- Bash: `scripts/run_ba1.sh`
+
+What `out/ba1` contains:
+- `run_meta.txt`: timestamp, Python version, system info, `pip freeze`
+- `bench/results.csv` + `bench/results.json`
+- `analyze/analysis.csv` + `analyze/analysis.json`
+- `report/report.md` and `report/plots/` (PNG)
+
+Clean (safe warning: deletes the entire folder):
+
+PowerShell:
+```powershell
+Remove-Item -Recurse -Force .\out\ba1
+```
+
+Bash (Linux/macOS/WSL):
+```bash
+rm -rf out/ba1
+```
+
+## Config explanation (brief)
+
+YAML keys you will most often adjust:
+
+- `profile`: profile name to use (must exist)
+- `coord`: coordinate used to derive the Lorenz seed (x,y)
+- `nbytes`: keystream length
+- `dt`, `warmup`, `quant_k`: Lorenz integration and sampling
+- `size`, `scale`: memory field parameters (must match profile)
+- `seed_strategy`: seed selection method
+- `memory_type`: `opensimplex` or `perlin`
+- `repeats`: benchmark repeats per variant
+
+Security note:
+- The raw token is never stored; only fingerprints/hashes are recorded in profiles and outputs.
+
+## Command cheat sheet
+
+| Command | One-liner |
+| --- | --- |
+| init | `python -m chaoscrypto.cli.app init --profile alice --token "secret" --size 128 --scale 0.1` |
+| keystream | `python -m chaoscrypto.cli.app keystream --profile alice --token "secret" --coord 12,34 --nbytes 1024` |
+| encrypt | `python -m chaoscrypto.cli.app encrypt --profile alice --token "secret" --coord 12,34 --in msg.txt --out enc.json` |
+| decrypt | `python -m chaoscrypto.cli.app decrypt --profile alice --token "secret" --in enc.json --out dec.txt` |
+| benchmark | `python -m chaoscrypto.cli.app benchmark --config examples/bench.yaml --out results.csv --out-json results.json` |
+| analyze | `python -m chaoscrypto.cli.app analyze --config examples/analyze.yaml --out analysis.csv --out-json analysis.json` |
+| report | `python -m chaoscrypto.cli.app report --bench-csv results.csv --analysis-csv analysis.csv --out report.md --plots-dir plots` |
+
+## Notes
+
+- Deterministic: same token + same parameters → identical keystreams and outputs.
+- Profiles are stored under your user home directory (never in the repo).
+- `--verbose` / `--debug` add logs; they do not change outputs.
