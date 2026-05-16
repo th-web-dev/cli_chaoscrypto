@@ -49,8 +49,8 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
         },
         "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3", "window_mean_3x3"]},
         "metrics": {
-            "include_field_time": False,
-            "include_xor_time": False,
+            "include_field_time": True,
+            "include_xor_time": True,
             "include_decrypt_time": False,
             "keystream_hash": "sha256",
         },
@@ -86,6 +86,14 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
     lines = csv_out.read_text().strip().splitlines()
     # header + rows; rows = len(matrix product) * repeats = (2 warmup *2 seed)=4 *2 repeats =8
     assert len(lines) == 1 + 8
+
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    assert rows
+    first = rows[0]
+    for field in ("t_field_s", "t_seed_s", "t_keystream_s", "t_xor_s"):
+        assert first[field] != ""
+        assert float(first[field]) > 0.0
 
     data = json.loads(json_out.read_text())
     assert len(data) == 8

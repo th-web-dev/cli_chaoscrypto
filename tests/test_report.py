@@ -20,6 +20,7 @@ def _write_bench_csv(path: Path):
         "size": "128",
         "scale": "0.1",
         "t_field_s": "",
+        "t_seed_s": "",
         "t_xor_s": "",
         "t_decrypt_s": "",
         "throughput_xor_bps": "",
@@ -32,6 +33,9 @@ def _write_bench_csv(path: Path):
             "warmup": "100",
             "seed_strategy": "neighborhood3",
             "memory_type": "opensimplex",
+            "t_field_s": "0.15",
+            "t_seed_s": "0.01",
+            "t_xor_s": "0.02",
             "t_keystream_s": "0.5",
             "throughput_keystream_bps": str(1024 / 0.5),
             "keystream_sha256": "hash1",
@@ -42,6 +46,9 @@ def _write_bench_csv(path: Path):
             "warmup": "150",
             "seed_strategy": "neighborhood3",
             "memory_type": "perlin",
+            "t_field_s": "0.16",
+            "t_seed_s": "0.011",
+            "t_xor_s": "0.021",
             "t_keystream_s": "0.55",
             "throughput_keystream_bps": str(1024 / 0.55),
             "keystream_sha256": "hash1p",
@@ -52,6 +59,9 @@ def _write_bench_csv(path: Path):
             "warmup": "200",
             "seed_strategy": "window_mean_3x3",
             "memory_type": "opensimplex",
+            "t_field_s": "0.18",
+            "t_seed_s": "0.012",
+            "t_xor_s": "0.023",
             "t_keystream_s": "1.0",
             "throughput_keystream_bps": str(1024 / 1.0),
             "keystream_sha256": "hash2",
@@ -62,6 +72,9 @@ def _write_bench_csv(path: Path):
             "warmup": "250",
             "seed_strategy": "window_mean_3x3",
             "memory_type": "perlin",
+            "t_field_s": "0.19",
+            "t_seed_s": "0.013",
+            "t_xor_s": "0.024",
             "t_keystream_s": "1.1",
             "throughput_keystream_bps": str(1024 / 1.1),
             "keystream_sha256": "hash2p",
@@ -216,6 +229,8 @@ def test_report_smoke(tmp_path):
     assert "Analyze Summary" in content
     assert "NIST Summary" in content
     assert "seed_strategy" in content
+    assert "Phase timing overview" in content
+    assert "Seed derivation mean (s)" in content
     assert "/mnt/" not in content and "C:\\" not in content
     assert "Top throughput per seed_strategy (best across memory types)" in content
     assert "Top throughput per seed_strategy and memory_type" in content

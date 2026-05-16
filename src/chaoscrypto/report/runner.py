@@ -50,7 +50,11 @@ def _read_csv(path: Path) -> List[Dict[str, Any]]:
 class BenchAgg:
     key: Tuple
     count: int
+    mean_t_field: float | None
+    mean_t_seed: float | None
     mean_t_keystream: float
+    mean_t_xor: float | None
+    mean_t_decrypt: float | None
     std_t_keystream: float
     mean_throughput: float
     std_throughput: float
@@ -85,7 +89,11 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
 
     aggs: List[BenchAgg] = []
     for key, lst in groups.items():
+        field_vals = [_parse_float(x.get("t_field_s")) for x in lst if _parse_float(x.get("t_field_s")) is not None]
+        seed_vals = [_parse_float(x.get("t_seed_s")) for x in lst if _parse_float(x.get("t_seed_s")) is not None]
         t_keystream_vals = [_parse_float(x.get("t_keystream_s")) for x in lst if _parse_float(x.get("t_keystream_s")) is not None]
+        xor_vals = [_parse_float(x.get("t_xor_s")) for x in lst if _parse_float(x.get("t_xor_s")) is not None]
+        decrypt_vals = [_parse_float(x.get("t_decrypt_s")) for x in lst if _parse_float(x.get("t_decrypt_s")) is not None]
         throughput_vals = [_parse_float(x.get("throughput_keystream_bps")) for x in lst if _parse_float(x.get("throughput_keystream_bps")) is not None]
 
         def mean_std(values: List[float]) -> Tuple[float, float]:
@@ -94,6 +102,9 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
             m = sum(values) / len(values)
             var = sum((v - m) ** 2 for v in values) / len(values)
             return m, var**0.5
+
+        def mean_or_none(values: List[float]) -> float | None:
+            return (sum(values) / len(values)) if values else None
 
         mean_t, std_t = mean_std(t_keystream_vals)
         mean_tp, std_tp = mean_std(throughput_vals)
@@ -116,7 +127,11 @@ def _group_bench(rows: List[Dict[str, Any]]) -> List[BenchAgg]:
             BenchAgg(
                 key=key,
                 count=len(lst),
+                mean_t_field=mean_or_none(field_vals),
+                mean_t_seed=mean_or_none(seed_vals),
                 mean_t_keystream=mean_t,
+                mean_t_xor=mean_or_none(xor_vals),
+                mean_t_decrypt=mean_or_none(decrypt_vals),
                 std_t_keystream=std_t,
                 mean_throughput=mean_tp,
                 std_throughput=std_tp,
@@ -267,15 +282,32 @@ def _render_markdown(
 
     # Benchmark summary
     lines.append("## Benchmark Summary")
+    field_vals = [a.mean_t_field for a in bench_aggs if a.mean_t_field is not None]
+    seed_vals = [a.mean_t_seed for a in bench_aggs if a.mean_t_seed is not None]
+    xor_vals = [a.mean_t_xor for a in bench_aggs if a.mean_t_xor is not None]
+    decrypt_vals = [a.mean_t_decrypt for a in bench_aggs if a.mean_t_decrypt is not None]
+    if bench_aggs:
+        lines.append("Phase timing overview (mean across aggregated variants):")
+        if field_vals:
+            lines.append(f"- Field generation mean (s): {sum(field_vals) / len(field_vals):.6f}")
+        if seed_vals:
+            lines.append(f"- Seed derivation mean (s): {sum(seed_vals) / len(seed_vals):.6f}")
+        lines.append(f"- Keystream generation mean (s): {sum(a.mean_t_keystream for a in bench_aggs) / len(bench_aggs):.6f}")
+        if xor_vals:
+            lines.append(f"- XOR mean (s): {sum(xor_vals) / len(xor_vals):.6f}")
+        if decrypt_vals:
+            lines.append(f"- Decrypt mean (s): {sum(decrypt_vals) / len(decrypt_vals):.6f}")
+        lines.append("")
     top_by_tp = sorted(bench_aggs, key=lambda a: a.mean_throughput or 0, reverse=True)[:5]
     lines.append("Top throughput overall (mean over repeats):")
     lines.append("")
-    lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | memory_type | mean_t_keystream_s | mean_tp_bps | keystream_sha256 |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("| dt | warmup | quant_k | size | scale | seed_strategy | memory_type | mean_t_field_s | mean_t_seed_s | mean_t_keystream_s | mean_t_xor_s | mean_tp_bps | keystream_sha256 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for a in top_by_tp:
         lines.append(
             f"| {a.params['dt']} | {a.params['warmup']} | {a.params['quant_k']} | {a.params['size']} | {a.params['scale']} | {a.params.get('seed_strategy','')} | {a.params.get('memory_type','')} | "
-            f"{a.mean_t_keystream:.6g} | {a.mean_throughput:.3g} | {a.sample_hash or ''} |"
+            f"{'' if a.mean_t_field is None else f'{a.mean_t_field:.6g}'} | {'' if a.mean_t_seed is None else f'{a.mean_t_seed:.6g}'} | "
+            f"{a.mean_t_keystream:.6g} | {'' if a.mean_t_xor is None else f'{a.mean_t_xor:.6g}'} | {a.mean_throughput:.3g} | {a.sample_hash or ''} |"
         )
     lines.append("")
     # Per seed_strategy (best across memory types)

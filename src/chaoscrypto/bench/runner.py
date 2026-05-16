@@ -16,6 +16,7 @@ import numpy as np
 import yaml
 
 from chaoscrypto.core import constants
+from chaoscrypto.core.crypto.xor import xor_bytes
 from chaoscrypto.core.memory.base import MemoryParams, MemoryModel
 from chaoscrypto.io.profiles import load_profile_meta, memory_params_from_meta, token_fingerprint
 from chaoscrypto.orchestrator.pipeline import (
@@ -250,18 +251,22 @@ def _keystream_and_metrics(
     result["field_fingerprint"] = field_fp if include_field_fp else None
     result["t_field_s"] = t_field
 
-    # Seed / Keystream
-    def gen_ks():
-        init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-        return generate_keystream(
+    # Seed
+    init_state, t_seed = _measure_time(
+        lambda: derive_initial_state(field, coord, seed_strategy=seed_strategy)
+    )
+    result["t_seed_s"] = t_seed
+
+    # Keystream
+    ks, t_keystream = _measure_time(
+        lambda: generate_keystream(
             num_bytes=nbytes,
             init_state=init_state,
             dt=dt,
             warmup=warmup,
             quant_k=quant_k,
         )
-
-    ks, t_keystream = _measure_time(gen_ks)
+    )
 
     if assert_deterministic:
         ks2 = generate_keystream(
@@ -279,18 +284,14 @@ def _keystream_and_metrics(
     # XOR encrypt
     plaintext = _deterministic_plaintext(nbytes)
     if include_xor_time:
-        (ciphertext, _), t_xor = _measure_time(
-            lambda: (bytes(p ^ k for p, k in zip(plaintext, ks)), None)
-        )
+        ciphertext, t_xor = _measure_time(lambda: xor_bytes(plaintext, ks))
         result["t_xor_s"] = t_xor
     else:
-        ciphertext = bytes(p ^ k for p, k in zip(plaintext, ks))
+        ciphertext = xor_bytes(plaintext, ks)
         result["t_xor_s"] = None
 
     if include_decrypt_time:
-        (_, _), t_dec = _measure_time(
-            lambda: (bytes(c ^ k for c, k in zip(ciphertext, ks)), None)
-        )
+        _, t_dec = _measure_time(lambda: xor_bytes(ciphertext, ks))
         result["t_decrypt_s"] = t_dec
     else:
         result["t_decrypt_s"] = None
@@ -361,7 +362,7 @@ def _run_single_variant(
     precomputed_field = None
     precomputed_time = None
     if bench.field_regen_each_repeat:
-        field, field_fp = _generate_field(token_bytes, params)
+        field_fp = None
     else:
         if metrics.include_field_time:
             (field, field_fp), measured = _measure_time(lambda: _generate_field(token_bytes, params))
@@ -412,8 +413,9 @@ def _run_single_variant(
         "memory_type": variant["memory_type"],
         "keystream_sha256": ks_metrics["keystream_sha256"],
         "token_fingerprint": token_fp,
-        "field_fingerprint": field_fp if output.include_field_fingerprint else None,
+        "field_fingerprint": ks_metrics["field_fingerprint"],
         "t_field_s": ks_metrics["t_field_s"],
+        "t_seed_s": ks_metrics["t_seed_s"],
         "t_keystream_s": ks_metrics["t_keystream_s"],
         "t_xor_s": ks_metrics["t_xor_s"],
         "t_decrypt_s": ks_metrics["t_decrypt_s"],
@@ -494,6 +496,7 @@ CSV_FIELDS = [
     "seed_strategy",
     "memory_type",
     "t_field_s",
+    "t_seed_s",
     "t_keystream_s",
     "t_xor_s",
     "t_decrypt_s",
