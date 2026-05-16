@@ -9,6 +9,29 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 5.2: Usability-Auswertung (`usability-eval`) und Integration in `ba2-eval`
+
+Technisch:
+- `src/chaoscrypto/analysis/usability.py` wurde um eine Auswertungsschicht ergänzt.
+- Neuer CLI-Befehl `usability-eval`:
+- Input: `usability_log.csv` aus `study-run`
+- Output: `usability_summary.md`, `usability_summary.csv`, optional `usability_summary.json`
+- Berechnete KPIs:
+- Erfolgsquote (`success_rate`)
+- Laufzeit median/p95 (`duration_median_s`, `duration_p95_s`)
+- Reproduzierbarkeitsquote (`repro_match_rate`)
+- Mittlere Fehlversuche vor Erfolg (`mean_failed_attempts_before_success`)
+- Kennzahlen zusätzlich pro Command aggregiert.
+- `ba2-eval` akzeptiert jetzt optional `--usability-csv` und erweitert den Gesamt-Readout um den Usability-Block.
+- Testabdeckung erweitert:
+- `tests/test_usability_eval.py` (CLI E2E für `usability-eval`)
+- `tests/test_ba2_eval.py` um Usability-Integration ergänzt.
+
+BA-Relevanz:
+- Damit ist die dritte BA2-Säule (Usability) formal im gleichen Auswertungsniveau wie NIST, Avalanche und Periodizität.
+- Die Arbeit kann nun quantitative Aussagen zur Bedienbarkeit und Reproduzierbarkeit direkt aus Messdaten ableiten.
+- Der konsolidierte BA2-Readout reduziert manuellen Aufwand und erhöht die methodische Konsistenz der Ergebnisdarstellung.
+
 ### Task 5.1: Usability-Instrumentierung mit `study-run`
 
 Technisch:

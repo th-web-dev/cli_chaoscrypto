@@ -145,7 +145,7 @@ def _summarize_periodicity(rows: List[Dict[str, str]]) -> Dict[str, Any]:
 
 
 def _build_overview_rows(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicity: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [
+    rows = [
         {"domain": "nist", "metric": "variants_total", "value": nist.get("variants_total")},
         {"domain": "nist", "metric": "variants_with_any_fail", "value": nist.get("variants_with_any_fail")},
         {"domain": "nist", "metric": "variants_fail_share", "value": nist.get("variants_fail_share")},
@@ -159,9 +159,10 @@ def _build_overview_rows(nist: Dict[str, Any], avalanche: Dict[str, Any], period
         {"domain": "periodicity", "metric": "mean_lag_match_ratio", "value": periodicity.get("mean_lag_match_ratio")},
         {"domain": "periodicity", "metric": "detected_prefix_period_variants", "value": periodicity.get("detected_prefix_period_variants")},
     ]
+    return rows
 
 
-def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicity: Dict[str, Any]) -> str:
+def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicity: Dict[str, Any], usability: Dict[str, Any] | None = None) -> str:
     lines: List[str] = []
     lines.append("# BA2 Evaluation Summary")
     lines.append("")
@@ -196,6 +197,14 @@ def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicit
     lines.append(f"- Mean lag match ratio: {periodicity.get('mean_lag_match_ratio')}")
     lines.append(f"- Max lag match ratio: {periodicity.get('max_lag_match_ratio')}")
     lines.append(f"- Detected prefix period variants: {periodicity.get('detected_prefix_period_variants')}")
+    if usability is not None:
+        lines.append("")
+        lines.append("## Usability")
+        lines.append(f"- Runs total: {usability.get('runs_total')}")
+        lines.append(f"- Success rate: {usability.get('success_rate')}")
+        lines.append(f"- Duration median/p95 (s): {usability.get('duration_median_s')} / {usability.get('duration_p95_s')}")
+        lines.append(f"- Reproducibility match rate: {usability.get('repro_match_rate')}")
+        lines.append(f"- Mean failed attempts before success: {usability.get('mean_failed_attempts_before_success')}")
     lines.append("")
     lines.append("## BA2 Notes")
     lines.append("- Use NIST fail clusters to discuss parameter sensitivity (`dt`, `warmup`, `quant_k`, seed strategy, memory model).")
@@ -209,6 +218,7 @@ def run_ba2_eval(
     nist_summary_csv: Path,
     avalanche_csv: Path,
     periodicity_csv: Path,
+    usability_summary: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     nist_runs = _read_csv(nist_runs_csv)
     nist_summary_rows = _read_csv(nist_summary_csv)
@@ -218,14 +228,26 @@ def run_ba2_eval(
     avalanche = _summarize_avalanche(avalanche_rows)
     periodicity = _summarize_periodicity(periodicity_rows)
     overview = _build_overview_rows(nist, avalanche, periodicity)
-    markdown = _render_markdown(nist, avalanche, periodicity)
-    return {
+    if usability_summary is not None:
+        overview.extend(
+            [
+                {"domain": "usability", "metric": "runs_total", "value": usability_summary.get("runs_total")},
+                {"domain": "usability", "metric": "success_rate", "value": usability_summary.get("success_rate")},
+                {"domain": "usability", "metric": "duration_median_s", "value": usability_summary.get("duration_median_s")},
+                {"domain": "usability", "metric": "repro_match_rate", "value": usability_summary.get("repro_match_rate")},
+            ]
+        )
+    markdown = _render_markdown(nist, avalanche, periodicity, usability_summary)
+    payload: Dict[str, Any] = {
         "nist": nist,
         "avalanche": avalanche,
         "periodicity": periodicity,
         "overview_rows": overview,
         "markdown": markdown,
     }
+    if usability_summary is not None:
+        payload["usability"] = usability_summary
+    return payload
 
 
 def write_ba2_eval_overview_csv(path: Path, rows: List[Dict[str, Any]]) -> None:

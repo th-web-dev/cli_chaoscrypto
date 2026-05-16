@@ -74,6 +74,15 @@ def test_ba2_eval_generates_outputs(tmp_path):
     out_md = tmp_path / "ba2_eval_summary.md"
     out_csv = tmp_path / "ba2_eval_summary.csv"
     out_json = tmp_path / "ba2_eval_summary.json"
+    usability_log = tmp_path / "usability_log.csv"
+    _write_csv(
+        usability_log,
+        ["session_id", "command_name", "duration_s", "status", "repro_match_previous", "failed_attempts_before_success"],
+        [
+            {"session_id": "s1", "command_name": "analyze", "duration_s": "0.5", "status": "success", "repro_match_previous": "True", "failed_attempts_before_success": "0"},
+            {"session_id": "s1", "command_name": "analyze", "duration_s": "0.8", "status": "fail", "repro_match_previous": "", "failed_attempts_before_success": ""},
+        ],
+    )
     runner = CliRunner()
     result = runner.invoke(
         app,
@@ -93,6 +102,8 @@ def test_ba2_eval_generates_outputs(tmp_path):
             str(out_csv),
             "--out-json",
             str(out_json),
+            "--usability-csv",
+            str(usability_log),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -100,3 +111,4 @@ def test_ba2_eval_generates_outputs(tmp_path):
     assert out_csv.exists()
     assert out_json.exists()
     assert "BA2 Evaluation Summary" in out_md.read_text(encoding="utf-8")
+    assert "## Usability" in out_md.read_text(encoding="utf-8")

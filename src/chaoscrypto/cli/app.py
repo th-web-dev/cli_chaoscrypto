@@ -73,6 +73,13 @@ from chaoscrypto.analysis.ba2_eval import (
     write_ba2_eval_json,
 )
 from chaoscrypto.analysis.usability import append_usability_log, build_usability_row, read_usability_log
+from chaoscrypto.analysis.usability import (
+    run_usability_eval,
+    write_usability_summary_csv,
+    render_usability_markdown,
+    write_usability_markdown,
+    write_usability_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -1075,6 +1082,7 @@ def ba2_eval(
     out_md: Path = typer.Option(..., "--out-md", help="BA2 markdown summary path"),
     out_csv: Path = typer.Option(..., "--out-csv", help="BA2 overview CSV path"),
     out_json: Path | None = typer.Option(None, "--out-json", help="Optional BA2 JSON summary path"),
+    usability_csv: Path | None = typer.Option(None, "--usability-csv", exists=True, readable=True, help="Optional usability log CSV"),
     json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
 ):
     """
@@ -1086,13 +1094,20 @@ def ba2_eval(
     print_io_read(nist_summary_csv)
     print_io_read(avalanche_csv)
     print_io_read(periodicity_csv)
+    usability_summary = None
+    if usability_csv:
+        print_io_read(usability_csv)
 
     try:
+        if usability_csv:
+            usability_payload = run_usability_eval(usability_csv)
+            usability_summary = usability_payload["summary"]
         payload = run_ba2_eval(
             nist_runs_csv=nist_runs_csv,
             nist_summary_csv=nist_summary_csv,
             avalanche_csv=avalanche_csv,
             periodicity_csv=periodicity_csv,
+            usability_summary=usability_summary,
         )
     except Exception as exc:  # noqa: BLE001
         typer.secho(f"BA2 eval failed: {exc}", fg=typer.colors.RED)
@@ -1132,6 +1147,7 @@ def ba2_eval(
             "nist_variants": payload["nist"].get("variants_total"),
             "avalanche_rows_evaluated": payload["avalanche"].get("rows_evaluated"),
             "periodicity_variants": payload["periodicity"].get("variants_total"),
+            "usability_runs_total": (payload.get("usability") or {}).get("runs_total"),
             "out_md": str(out_md),
             "out_csv": str(out_csv),
             "out_json": str(out_json) if out_json else None,
@@ -1189,6 +1205,55 @@ def study_run(
     typer.secho(f"study-run logged status={status} duration_s={round(duration_s, 4)}", fg=typer.colors.GREEN if completed.returncode == 0 else typer.colors.RED)
     if completed.returncode != 0:
         raise typer.Exit(code=completed.returncode)
+
+
+@app.command("usability-eval")
+def usability_eval(
+    log_csv: Path = typer.Option(..., "--log-csv", exists=True, readable=True, help="Usability log CSV path"),
+    out_md: Path = typer.Option(..., "--out-md", help="Usability markdown summary path"),
+    out_csv: Path = typer.Option(..., "--out-csv", help="Usability summary CSV path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional usability JSON summary path"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Build a BA2-oriented usability summary from study-run logs.
+    """
+    set_command_context("usability-eval")
+    print_run_header("usability-eval", profile_name=None, profile_dir_path=None, profile_files=None, memory_params=None, token_fingerprint=None)
+    print_io_read(log_csv)
+    try:
+        payload = run_usability_eval(log_csv)
+        markdown = render_usability_markdown(payload["summary"], payload["by_command"])
+        write_usability_markdown(out_md, markdown)
+        write_usability_summary_csv(out_csv, payload["summary"], payload["by_command"])
+        if out_json:
+            write_usability_json(out_json, payload)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Usability eval failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out_md)
+    print_io_write(out_csv)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"Usability eval complete. Markdown → {out_md}", fg=typer.colors.GREEN)
+    typer.secho(f"Usability eval complete. CSV → {out_csv}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("usability eval complete")
+
+    if json_summary:
+        import json
+
+        summary = {
+            "runs_total": payload["summary"].get("runs_total"),
+            "success_rate": payload["summary"].get("success_rate"),
+            "repro_match_rate": payload["summary"].get("repro_match_rate"),
+            "out_md": str(out_md),
+            "out_csv": str(out_csv),
+            "out_json": str(out_json) if out_json else None,
+        }
+        typer.echo(json.dumps(summary))
 
 
 @app.command("platform-check")
