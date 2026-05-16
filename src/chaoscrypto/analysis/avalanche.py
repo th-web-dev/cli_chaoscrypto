@@ -39,6 +39,8 @@ AVALANCHE_FIELDS = [
     "perturbation_type",
     "perturbation_target",
     "perturbation_bit_index",
+    "perturbation_skipped",
+    "perturbation_skip_reason",
     "token_fingerprint_base",
     "token_fingerprint_perturbed",
     "field_fingerprint_base",
@@ -130,6 +132,7 @@ def _generate_keystream_variant(
 def _build_perturbations(
     token_bytes: bytes,
     coord: Tuple[int, int],
+    size: int,
     token_bit_flips: int,
     coord_bit_flips: int,
 ) -> List[Dict[str, Any]]:
@@ -148,22 +151,30 @@ def _build_perturbations(
 
     max_coord_bits = max(0, coord_bit_flips)
     for bit_idx in range(max_coord_bits):
+        flipped_x = _flip_bit_int(coord[0], bit_idx)
+        x_invariant = (flipped_x % size) == (coord[0] % size)
         perturbations.append(
             {
                 "type": "coord_x_bit_flip",
                 "target": "coord_x",
                 "bit_index": bit_idx,
                 "token_bytes": token_bytes,
-                "coord": (_flip_bit_int(coord[0], bit_idx), coord[1]),
+                "coord": (flipped_x, coord[1]),
+                "skip": x_invariant,
+                "skip_reason": "coord_x modulo memory size unchanged" if x_invariant else None,
             }
         )
+        flipped_y = _flip_bit_int(coord[1], bit_idx)
+        y_invariant = (flipped_y % size) == (coord[1] % size)
         perturbations.append(
             {
                 "type": "coord_y_bit_flip",
                 "target": "coord_y",
                 "bit_index": bit_idx,
                 "token_bytes": token_bytes,
-                "coord": (coord[0], _flip_bit_int(coord[1], bit_idx)),
+                "coord": (coord[0], flipped_y),
+                "skip": y_invariant,
+                "skip_reason": "coord_y modulo memory size unchanged" if y_invariant else None,
             }
         )
     return perturbations
@@ -193,9 +204,48 @@ def _run_avalanche_one(
     )
     base_ks_sha = hashlib.sha256(base_ks).hexdigest()
 
-    perturbations = _build_perturbations(token_bytes, variant["coord"], token_bit_flips, coord_bit_flips)
+    perturbations = _build_perturbations(
+        token_bytes,
+        variant["coord"],
+        size=variant["size"],
+        token_bit_flips=token_bit_flips,
+        coord_bit_flips=coord_bit_flips,
+    )
     rows: List[Dict[str, Any]] = []
     for p in perturbations:
+        skipped = bool(p.get("skip", False))
+        skip_reason = p.get("skip_reason")
+        if skipped:
+            record: Dict[str, Any] = {
+                "timestamp_utc": datetime.now(timezone.utc).isoformat() if config.output.include_timestamp_utc else None,
+                "profile": config.analyze.profile,
+                "coord_x": variant["coord"][0],
+                "coord_y": variant["coord"][1],
+                "nbytes": config.analyze.nbytes,
+                "dt": variant["dt"],
+                "warmup": variant["warmup"],
+                "quant_k": variant["quant_k"],
+                "size": variant["size"],
+                "scale": variant["scale"],
+                "seed_strategy": variant["seed_strategy"],
+                "memory_type": variant["memory_type"],
+                "perturbation_type": p["type"],
+                "perturbation_target": p["target"],
+                "perturbation_bit_index": p["bit_index"],
+                "perturbation_skipped": True,
+                "perturbation_skip_reason": skip_reason,
+                "token_fingerprint_base": token_fp,
+                "token_fingerprint_perturbed": token_fingerprint(p["token_bytes"]),
+                "field_fingerprint_base": base_field_fp,
+                "field_fingerprint_perturbed": base_field_fp,
+                "keystream_sha256_base": base_ks_sha,
+                "keystream_sha256_perturbed": base_ks_sha,
+                "hamming_distance_bits": None,
+                "hamming_distance_ratio": None,
+            }
+            rows.append(record)
+            continue
+
         pert_ks, pert_field_fp = _generate_keystream_variant(
             token_bytes=p["token_bytes"],
             coord=p["coord"],
@@ -225,6 +275,8 @@ def _run_avalanche_one(
             "perturbation_type": p["type"],
             "perturbation_target": p["target"],
             "perturbation_bit_index": p["bit_index"],
+            "perturbation_skipped": False,
+            "perturbation_skip_reason": None,
             "token_fingerprint_base": token_fp,
             "token_fingerprint_perturbed": token_fingerprint(p["token_bytes"]),
             "field_fingerprint_base": base_field_fp,
@@ -296,11 +348,14 @@ def write_avalanche_csv(path: Path, records: Sequence[Dict[str, Any]]) -> None:
 
 def write_avalanche_json(path: Path, records: Sequence[Dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    non_skipped = [r for r in records if not bool(r.get("perturbation_skipped"))]
     payload = {
         "summary": {
             "rows": len(records),
+            "rows_skipped": len(records) - len(non_skipped),
+            "rows_evaluated": len(non_skipped),
             "mean_hamming_distance_ratio": (
-                float(sum(float(r["hamming_distance_ratio"]) for r in records) / len(records)) if records else 0.0
+                float(sum(float(r["hamming_distance_ratio"]) for r in non_skipped) / len(non_skipped)) if non_skipped else 0.0
             ),
         },
         "records": list(records),

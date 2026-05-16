@@ -127,3 +127,45 @@ def test_avalanche_rejects_negative_flip_counts(tmp_path, monkeypatch):
         ],
     )
     assert res.exit_code != 0
+
+
+def test_avalanche_skips_modulo_invariant_coord_flips(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+    _init_profile(runner)
+
+    cfg_path = Path(tmp_path) / "avalanche.yaml"
+    cfg_path.write_text(yaml.safe_dump(_avalanche_cfg()), encoding="utf-8")
+    csv_out = Path(tmp_path) / "avalanche.csv"
+    json_out = Path(tmp_path) / "avalanche.json"
+
+    res = runner.invoke(
+        app,
+        [
+            "avalanche",
+            "--config",
+            str(cfg_path),
+            "--out",
+            str(csv_out),
+            "--out-json",
+            str(json_out),
+            "--token-bit-flips",
+            "0",
+            "--coord-bit-flips",
+            "8",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 16
+    skipped = [r for r in rows if r["perturbation_skipped"] == "True"]
+    assert len(skipped) == 2
+    assert all(r["perturbation_bit_index"] == "7" for r in skipped)
+    assert all(r["hamming_distance_ratio"] == "" for r in skipped)
+
+    payload = json.loads(json_out.read_text(encoding="utf-8"))
+    assert payload["summary"]["rows"] == 16
+    assert payload["summary"]["rows_skipped"] == 2
+    assert payload["summary"]["rows_evaluated"] == 14

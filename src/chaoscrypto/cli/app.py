@@ -1211,9 +1211,12 @@ def avalanche(
     if json_summary:
         import json
 
-        mean_ratio = (sum(float(rec["hamming_distance_ratio"]) for rec in records) / len(records)) if records else 0.0
+        non_skipped = [rec for rec in records if not bool(rec.get("perturbation_skipped"))]
+        mean_ratio = (sum(float(rec["hamming_distance_ratio"]) for rec in non_skipped) / len(non_skipped)) if non_skipped else 0.0
         summary = {
             "rows": len(records),
+            "rows_skipped": len(records) - len(non_skipped),
+            "rows_evaluated": len(non_skipped),
             "variants": variant_count,
             "mean_hamming_distance_ratio": mean_ratio,
             "csv": str(out),

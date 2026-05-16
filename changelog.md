@@ -98,3 +98,17 @@ BA-Relevanz:
 - Diese Erweiterung operationalisiert die BA2-Frage nach endlicher Präzision und möglicher Zyklusbildung über lange Bitfolgen.
 - Statt rein qualitativer Aussagen liefert sie reproduzierbare, quantifizierbare Hinweise auf Wiederholungsmuster.
 - Die Metriken sind direkt für Resultatdarstellung und Sicherheitsdiskussion nutzbar und ergänzen NIST- und Avalanche-Befunde methodisch sinnvoll.
+
+### Task 3.2: Methodik-Fix für Koordinaten-Bitflips
+
+Technisch:
+- Der Avalanche-Workflow wurde um eine Invarianz-Prüfung für Koordinaten-Bitflips ergänzt.
+- Bitflips, die modulo Feldgröße keine effektive Koordinatenänderung verursachen, werden jetzt als `perturbation_skipped=True` markiert.
+- Für übersprungene Fälle werden Grund (`perturbation_skip_reason`) und Basiswerte protokolliert, statt ein künstliches `hamming_distance_ratio=0.0` zu erzeugen.
+- CSV/JSON-Ausgabe und CLI-JSON-Summary wurden angepasst (`rows_skipped`, `rows_evaluated`).
+- Die Testabdeckung wurde um einen gezielten Skip-Edge-Case erweitert.
+
+BA-Relevanz:
+- Dadurch wird der Avalanche-Befund methodisch korrekt und nicht durch modulo-invariante Artefakte verzerrt.
+- Die Auswertung trennt jetzt sauber zwischen echten Sensitivitätsmessungen und formal erzeugten, aber inhaltlich nicht wirksamen Perturbationen.
+- Das erhöht die wissenschaftliche Aussagekraft der BA2-Sicherheitsanalyse deutlich.
