@@ -20,6 +20,7 @@ metrics:
   include_field_time: true                # Erfasst die Zeit zur Generierung des Memory-Feldes
   include_xor_time: true                  # Erfasst die Zeit für die XOR-Verknüpfung von Klartext und Schlüsselstrom
   include_decrypt_time: false             # Entschlüsselungszeit wird nicht separat gemessen
+  compare_aes256ctr: false                # Optionaler Vergleich mit AES-256-CTR (Durchsatz-Baseline)
   keystream_hash: sha256                  # Kryptographischer Hash des Schlüsselstroms zur Vergleichbarkeit
 
 output:
@@ -31,4 +32,3 @@ output:
 validate:
   assert_deterministic_within_run: true   # Prüft, ob Wiederholungen mit identischen Parametern identische Ergebnisse liefern
   extra_determinism_check: false          # Zusätzliche, strengere Determinismus-Checks (hier deaktiviert)
-

@@ -9,6 +9,13 @@ from typer.testing import CliRunner
 from chaoscrypto.cli.app import app
 from chaoscrypto.bench.runner import parse_config, ConfigError
 
+try:
+    import cryptography  # noqa: F401
+
+    HAS_CRYPTOGRAPHY = True
+except Exception:  # noqa: BLE001
+    HAS_CRYPTOGRAPHY = False
+
 
 def test_parse_config_missing_key(tmp_path):
     cfg_path = Path(tmp_path) / "bench.yaml"
@@ -94,6 +101,9 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
     for field in ("t_field_s", "t_seed_s", "t_keystream_s", "t_xor_s"):
         assert first[field] != ""
         assert float(first[field]) > 0.0
+    assert first["t_aes256ctr_s"] == ""
+    assert first["throughput_aes256ctr_bps"] == ""
+    assert first["throughput_ratio_chaos_to_aes256ctr"] == ""
 
     data = json.loads(json_out.read_text())
     assert len(data) == 8
@@ -237,3 +247,62 @@ def test_benchmark_parallel_jobs(tmp_path, monkeypatch):
     with csv_out.open() as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 4
+
+
+@pytest.mark.skipif(not HAS_CRYPTOGRAPHY, reason="cryptography not installed")
+def test_benchmark_with_aes256ctr_compare(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--profile",
+            "alice",
+            "--token",
+            "secret",
+            "--size",
+            "128",
+            "--scale",
+            "0.1",
+        ],
+    )
+
+    cfg = {
+        "bench": {
+            "profile": "alice",
+            "token": "secret",
+            "coord": [1, 2],
+            "nbytes": 4096,
+            "repeats": 1,
+            "field_regen_each_repeat": True,
+        },
+        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3"]},
+        "metrics": {
+            "include_field_time": False,
+            "include_xor_time": False,
+            "include_decrypt_time": False,
+            "compare_aes256ctr": True,
+            "keystream_hash": "sha256",
+        },
+        "output": {
+            "include_timestamp_utc": False,
+            "include_field_fingerprint": True,
+            "include_keystream_preview": False,
+            "keystream_preview_bytes": 8,
+        },
+        "validate": {"assert_deterministic_within_run": True, "extra_determinism_check": False},
+    }
+    cfg_path = Path(tmp_path) / "bench_aes.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    csv_out = Path(tmp_path) / "out.csv"
+    res = runner.invoke(app, ["benchmark", "--config", str(cfg_path), "--out", str(csv_out)])
+    assert res.exit_code == 0, res.output
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    row = rows[0]
+    assert row["t_aes256ctr_s"] != ""
+    assert float(row["t_aes256ctr_s"]) > 0
+    assert row["throughput_aes256ctr_bps"] != ""
+    assert float(row["throughput_aes256ctr_bps"]) > 0

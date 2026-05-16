@@ -6,3 +6,4 @@ pytest
 opensimplex
 pyyaml
 matplotlib
+cryptography

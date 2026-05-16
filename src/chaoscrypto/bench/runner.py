@@ -15,6 +15,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import yaml
 
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+except Exception:  # noqa: BLE001
+    Cipher = None
+    algorithms = None
+    modes = None
+
 from chaoscrypto.core import constants
 from chaoscrypto.core.crypto.xor import xor_bytes
 from chaoscrypto.core.memory.base import MemoryParams, MemoryModel
@@ -63,6 +70,7 @@ class MetricsConfig:
     include_field_time: bool
     include_xor_time: bool
     include_decrypt_time: bool
+    compare_aes256ctr: bool
     keystream_hash: str  # only sha256 supported
 
 
@@ -163,10 +171,13 @@ def parse_config(path: Path) -> FullConfig:
         include_field_time=bool(metrics.get("include_field_time", True)),
         include_xor_time=bool(metrics.get("include_xor_time", True)),
         include_decrypt_time=bool(metrics.get("include_decrypt_time", False)),
+        compare_aes256ctr=bool(metrics.get("compare_aes256ctr", False)),
         keystream_hash=str(metrics.get("keystream_hash", "sha256")),
     )
     if metrics_cfg.keystream_hash.lower() != "sha256":
         raise ConfigError("Only sha256 keystream_hash is supported.")
+    if metrics_cfg.compare_aes256ctr and Cipher is None:
+        raise ConfigError("metrics.compare_aes256ctr=true requires 'cryptography' package.")
 
     output_cfg = OutputConfig(
         include_timestamp_utc=bool(output.get("include_timestamp_utc", True)),
@@ -205,6 +216,21 @@ def _deterministic_plaintext(nbytes: int) -> bytes:
     return bytes((i % 256 for i in range(nbytes)))
 
 
+def _derive_aes_key_nonce(token_bytes: bytes, coord: Tuple[int, int]) -> tuple[bytes, bytes]:
+    key = hashlib.sha256(token_bytes).digest()
+    nonce_src = f"{coord[0]},{coord[1]}".encode(constants.ENCODING)
+    nonce = hashlib.sha256(token_bytes + b":" + nonce_src).digest()[:16]
+    return key, nonce
+
+
+def _aes256ctr_encrypt(plaintext: bytes, key: bytes, nonce: bytes) -> bytes:
+    if Cipher is None or algorithms is None or modes is None:
+        raise RuntimeError("cryptography package not available")
+    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
+    encryptor = cipher.encryptor()
+    return encryptor.update(plaintext) + encryptor.finalize()
+
+
 def _generate_field(token_bytes: bytes, params: MemoryParams) -> Tuple[np.ndarray, str]:
     field, field_fp = build_memory_field(token_bytes, params)
     return field, field_fp
@@ -228,6 +254,7 @@ def _keystream_and_metrics(
     include_field_time: bool,
     include_xor_time: bool,
     include_decrypt_time: bool,
+    compare_aes256ctr: bool,
     field_regen_each: bool,
     assert_deterministic: bool,
     include_field_fp: bool,
@@ -295,6 +322,20 @@ def _keystream_and_metrics(
         result["t_decrypt_s"] = t_dec
     else:
         result["t_decrypt_s"] = None
+
+    if compare_aes256ctr:
+        aes_key, aes_nonce = _derive_aes_key_nonce(token_bytes, coord)
+        _, t_aes = _measure_time(lambda: _aes256ctr_encrypt(plaintext, aes_key, aes_nonce))
+        result["t_aes256ctr_s"] = t_aes
+        result["throughput_aes256ctr_bps"] = nbytes / t_aes if t_aes else None
+        if result["throughput_keystream_bps"] and result["throughput_aes256ctr_bps"]:
+            result["throughput_ratio_chaos_to_aes256ctr"] = result["throughput_keystream_bps"] / result["throughput_aes256ctr_bps"]
+        else:
+            result["throughput_ratio_chaos_to_aes256ctr"] = None
+    else:
+        result["t_aes256ctr_s"] = None
+        result["throughput_aes256ctr_bps"] = None
+        result["throughput_ratio_chaos_to_aes256ctr"] = None
 
     result["keystream_sha256"] = hashlib.sha256(ks).hexdigest()
     logger.debug(
@@ -387,6 +428,7 @@ def _run_single_variant(
         include_field_time=metrics.include_field_time,
         include_xor_time=metrics.include_xor_time,
         include_decrypt_time=metrics.include_decrypt_time,
+        compare_aes256ctr=metrics.compare_aes256ctr,
         field_regen_each=bench.field_regen_each_repeat,
         assert_deterministic=validate.assert_deterministic_within_run,
         include_field_fp=output.include_field_fingerprint,
@@ -419,8 +461,11 @@ def _run_single_variant(
         "t_keystream_s": ks_metrics["t_keystream_s"],
         "t_xor_s": ks_metrics["t_xor_s"],
         "t_decrypt_s": ks_metrics["t_decrypt_s"],
+        "t_aes256ctr_s": ks_metrics["t_aes256ctr_s"],
         "throughput_keystream_bps": ks_metrics["throughput_keystream_bps"],
         "throughput_xor_bps": ks_metrics["throughput_xor_bps"],
+        "throughput_aes256ctr_bps": ks_metrics["throughput_aes256ctr_bps"],
+        "throughput_ratio_chaos_to_aes256ctr": ks_metrics["throughput_ratio_chaos_to_aes256ctr"],
         "keystream_preview_base64": ks_metrics["keystream_preview_base64"],
     }
     if output.include_timestamp_utc:
@@ -500,8 +545,11 @@ CSV_FIELDS = [
     "t_keystream_s",
     "t_xor_s",
     "t_decrypt_s",
+    "t_aes256ctr_s",
     "throughput_keystream_bps",
     "throughput_xor_bps",
+    "throughput_aes256ctr_bps",
+    "throughput_ratio_chaos_to_aes256ctr",
     "keystream_sha256",
     "field_fingerprint",
     "token_fingerprint",

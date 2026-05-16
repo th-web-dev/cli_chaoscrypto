@@ -9,6 +9,26 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 2.3: Performance-Vergleich gegen AES-256-CTR
+
+Technisch:
+- Der Benchmark wurde um einen optionalen Industriestandard-Vergleich erweitert (`metrics.compare_aes256ctr`).
+- Bei aktivierter Option wird zusätzlich eine AES-256-CTR-Verschlüsselung (via `cryptography`) über denselben deterministischen Klartext gemessen.
+- Neue Exportfelder in `results.csv`:
+- `t_aes256ctr_s`
+- `throughput_aes256ctr_bps`
+- `throughput_ratio_chaos_to_aes256ctr`
+- Die AES-Key/Nonce-Ableitung ist deterministisch aus Token und Koordinate, damit Vergleichsläufe reproduzierbar bleiben.
+- Wenn `compare_aes256ctr=true` gesetzt ist, aber `cryptography` fehlt, wird ein klarer Config-Fehler ausgegeben.
+- Testabdeckung erweitert:
+- `tests/test_benchmark.py` prüft die neuen Felder im Standardfall (leer wenn deaktiviert) und enthält einen separaten Test für aktivierten AES-Vergleich (wenn `cryptography` verfügbar ist).
+- BA2-Beispielkonfiguration `examples/ba2_benchmark.yaml` aktiviert den AES-Vergleich für direkte Performance-Einordnung.
+
+BA-Relevanz:
+- Der Prototyp wird damit quantitativ relativ zu einem etablierten kryptographischen Standard eingeordnet.
+- Die BA2-Performance-Diskussion kann jetzt nicht nur absolute, sondern auch relationale Aussagen (ChaosCrypto vs. AES-CTR) treffen.
+- Das stärkt die externe Validität der Performancebewertung deutlich.
+
 ### Task 5.2: Usability-Auswertung (`usability-eval`) und Integration in `ba2-eval`
 
 Technisch:
