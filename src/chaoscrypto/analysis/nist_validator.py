@@ -65,6 +65,23 @@ _NON_OVERLAPPING_TEMPLATE_BITS = {
     for template in _NON_OVERLAPPING_TEMPLATE_STRINGS
 }
 _OVERLAPPING_TEMPLATE_BITS = np.ones(9, dtype=np.uint8)
+_MIN_BITS_BY_TEST: Dict[str, int] = {
+    "frequency_monobit": 1,
+    "block_frequency": 128,
+    "runs": 100,
+    "longest_run_of_ones": 128,
+    "binary_matrix_rank": 1024,
+    "discrete_fourier_transform": 1000,
+    "non_overlapping_template_matching": 1024,
+    "overlapping_template_matching": 1032,
+    "maurers_universal": 387840,
+    "linear_complexity": 500,
+    "serial": 128,
+    "approximate_entropy": 128,
+    "cumulative_sums": 1,
+    "random_excursions": 1,
+    "random_excursions_variant": 1,
+}
 
 
 @dataclass(frozen=True)
@@ -684,7 +701,11 @@ def run_full_nist_suite(keystream_bytes: bytes, alpha: float = NIST_DEFAULT_ALPH
 
     for name, fn in runners:
         t0 = perf_counter()
-        result = fn(bits, alpha)
+        min_bits = _MIN_BITS_BY_TEST.get(name, 1)
+        if bits.size < min_bits:
+            result = _skip(name, "insufficient_bits", n_bits=int(bits.size), required_min_bits=int(min_bits))
+        else:
+            result = fn(bits, alpha)
         elapsed = perf_counter() - t0
         result["details"]["elapsed_s"] = elapsed
         tests[name] = result

@@ -9,6 +9,23 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 3.3: NIST-Batch-Workflow und BA2-Aggregation
+
+Technisch:
+- Ein neues Modul `src/chaoscrypto/analysis/nist_batch.py` wurde ergänzt.
+- Der neue CLI-Befehl `nist-batch` läuft die vollständige Variantenmatrix aus der bestehenden Analyze-Konfiguration durch und führt pro Variantenlauf die NIST-Suite aus.
+- Die Ausgabe ist in zwei BA2-orientierte CSVs getrennt:
+- Run-Ebene: `nist_runs.csv` mit Parametern, Gesamtzählern und testweisen `status`/`p_value`/`skip_reason`.
+- Test-Ebene: `nist_summary.csv` mit aggregierten Kennzahlen (`n_runs`, `n_pass`, `n_fail`, `n_skip`, `pass_rate`, `pvalue_mean`, `pvalue_std`, `pvalue_min`, `pvalue_max`).
+- Optional kann ein kombinierter JSON-Export (`--out-json`) erzeugt werden.
+- In `nist_validator.py` wurde eine explizite Mindestlängen-Guardrail pro Test ergänzt; bei zu kurzen Bitfolgen wird konsistent `status=skip`, `reason=insufficient_bits` und `required_min_bits` protokolliert.
+- Die Testabdeckung wurde mit `tests/test_nist_batch.py` erweitert (Smoke-Test für Run-/Summary-Outputs und Verifikation der Skip-Reason-Logik).
+
+BA-Relevanz:
+- Die NIST-Auswertung ist damit nicht mehr nur als Einzelmessung vorhanden, sondern als reproduzierbarer Batch-Prozess für Variantenvergleiche.
+- Die getrennte Run- und Testaggregation vereinfacht die direkte Übernahme in BA2-Tabellen und statistische Diskussionen.
+- Die expliziten Skip-Gründe erhöhen die methodische Transparenz, da fehlende Mindestlängen nicht als "echte" Test-Fails fehlinterpretiert werden.
+
 ### NIST-Validierung und BA2-Analysepipeline
 
 Technisch:

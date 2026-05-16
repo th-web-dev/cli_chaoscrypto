@@ -56,6 +56,12 @@ from chaoscrypto.analysis.periodicity import (
     write_periodicity_csv,
     write_periodicity_json,
 )
+from chaoscrypto.analysis.nist_batch import (
+    run_nist_batch,
+    write_nist_runs_csv,
+    write_nist_summary_csv,
+    write_nist_batch_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -935,6 +941,118 @@ def analyze(
             "variants": len(records),
         }
         typer.echo(json.dumps(summary))
+
+
+@app.command("nist-batch")
+def nist_batch(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out_runs: Path = typer.Option(..., "--out-runs", help="CSV output path (run-level)"),
+    out_summary: Path = typer.Option(..., "--out-summary", help="CSV output path (test-level summary)"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Run BA2-oriented NIST batch validation over the full analyze matrix.
+    """
+    set_command_context("nist-batch")
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
+    if not cfg.metrics.nist_suite_enabled:
+        typer.secho("metrics.nist_suite.enabled must be true for nist-batch.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    variant_count = (
+        len(cfg.analyze.coords)
+        * len(cfg.matrix.dt)
+        * len(cfg.matrix.warmup)
+        * len(cfg.matrix.quant_k)
+        * len(cfg.matrix.size)
+        * len(cfg.matrix.scale)
+        * len(cfg.matrix.seed_strategy)
+        * len(cfg.matrix.memory_type)
+    )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "nist-batch",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
+    logger.info(
+        "Loaded nist-batch config=%s profile=%s variants=%d",
+        config,
+        cfg.analyze.profile,
+        variant_count,
+    )
+
+    try:
+        run_rows, summary_rows, batch_summary = run_nist_batch(cfg, jobs=jobs)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"NIST batch failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "nist-batch",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} failed_count={nist_failed_count}"
+            ).format(**rec)
+            for rec in run_rows
+        ],
+    )
+
+    try:
+        write_nist_runs_csv(out_runs, run_rows)
+        write_nist_summary_csv(out_summary, summary_rows)
+        if out_json:
+            write_nist_batch_json(out_json, run_rows, summary_rows, batch_summary)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out_runs)
+    print_io_write(out_summary)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"NIST batch complete. runs CSV → {out_runs}", fg=typer.colors.GREEN)
+    typer.secho(f"NIST batch complete. summary CSV → {out_summary}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("nist batch complete")
+
+    if json_summary:
+        import json
+
+        payload = {
+            "runs": batch_summary.runs,
+            "summary_rows": batch_summary.rows_summary,
+            "failed_any_runs": batch_summary.failed_any_runs,
+            "out_runs": str(out_runs),
+            "out_summary": str(out_summary),
+            "out_json": str(out_json) if out_json else None,
+        }
+        typer.echo(json.dumps(payload))
 
 
 @app.command("platform-check")
