@@ -81,3 +81,20 @@ BA-Relevanz:
 - Diese Erweiterung liefert eine direkte empirische Messung der Sensitivität gegenüber minimalen Eingabeänderungen.
 - Damit kann für BA2 nachvollziehbar geprüft werden, wie nah das System am erwarteten Avalanche-Verhalten (ca. 50% Bitänderung) liegt.
 - Die Ausgaben sind direkt für Resultatkapitel und Diskussion nutzbar, weil sie pro Variantenlauf reproduzierbar und vergleichbar sind.
+
+### Task 3.1: Finite Precision & Periodizitäts-Analyse
+
+Technisch:
+- Es wurde ein neues Modul `src/chaoscrypto/analysis/periodicity.py` ergänzt.
+- Der neue CLI-Befehl `periodicity` erzeugt pro Variante einen Keystream und berechnet mehrere Periodizitätsindikatoren:
+- Chunk-Hash-Wiederholungen (inklusive `unique_chunk_hashes`, `repeated_chunk_hash_count`, `max_chunk_hash_frequency`)
+- Byte-Lag-Match-Ratio über konfigurierbaren Abstand (`lag_match_ratio`)
+- Einfache exakte Präfix-Periodensuche bis zu einer konfigurierbaren Obergrenze (`detected_prefix_period_bytes`)
+- Die Ergebnisse werden in CSV/JSON exportiert und sind matrix-kompatibel mit dem bestehenden BA2-Workflow.
+- Eine BA2-Beispielkonfiguration wurde in `examples/ba2_periodicity.yaml` ergänzt.
+- Die Testabdeckung wurde mit CLI-Smoke- und Parameter-Validierungstests erweitert.
+
+BA-Relevanz:
+- Diese Erweiterung operationalisiert die BA2-Frage nach endlicher Präzision und möglicher Zyklusbildung über lange Bitfolgen.
+- Statt rein qualitativer Aussagen liefert sie reproduzierbare, quantifizierbare Hinweise auf Wiederholungsmuster.
+- Die Metriken sind direkt für Resultatdarstellung und Sicherheitsdiskussion nutzbar und ergänzen NIST- und Avalanche-Befunde methodisch sinnvoll.

@@ -51,6 +51,11 @@ from chaoscrypto.analysis.avalanche import (
     write_avalanche_csv,
     write_avalanche_json,
 )
+from chaoscrypto.analysis.periodicity import (
+    run_periodicity,
+    write_periodicity_csv,
+    write_periodicity_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -1211,6 +1216,127 @@ def avalanche(
             "rows": len(records),
             "variants": variant_count,
             "mean_hamming_distance_ratio": mean_ratio,
+            "csv": str(out),
+            "json": str(out_json) if out_json else None,
+        }
+        typer.echo(json.dumps(summary))
+
+
+@app.command("periodicity")
+def periodicity(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out: Path = typer.Option(..., "--out", "-o", help="CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    chunk_size_bytes: int = typer.Option(4096, "--chunk-size-bytes", help="Chunk size for chunk-hash repeat analysis"),
+    lag_step_bytes: int = typer.Option(4096, "--lag-step-bytes", help="Byte lag used for lag-match ratio"),
+    max_detect_period_bytes: int = typer.Option(8192, "--max-detect-period-bytes", help="Upper bound for exact prefix-period detection"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Analyze long keystreams for periodicity indicators (chunk repeats, lag match, simple cycle hints).
+    """
+    set_command_context("periodicity")
+    if chunk_size_bytes <= 0 or lag_step_bytes <= 0 or max_detect_period_bytes <= 0:
+        typer.secho("chunk_size_bytes, lag_step_bytes and max_detect_period_bytes must be > 0", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
+    variant_count = (
+        len(cfg.analyze.coords)
+        * len(cfg.matrix.dt)
+        * len(cfg.matrix.warmup)
+        * len(cfg.matrix.quant_k)
+        * len(cfg.matrix.size)
+        * len(cfg.matrix.scale)
+        * len(cfg.matrix.seed_strategy)
+        * len(cfg.matrix.memory_type)
+    )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "periodicity",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
+    logger.info(
+        "Loaded periodicity config=%s profile=%s variants=%d chunk_size=%d lag_step=%d max_detect_period=%d",
+        config,
+        cfg.analyze.profile,
+        variant_count,
+        chunk_size_bytes,
+        lag_step_bytes,
+        max_detect_period_bytes,
+    )
+
+    try:
+        records = run_periodicity(
+            cfg,
+            jobs=jobs,
+            chunk_size_bytes=chunk_size_bytes,
+            lag_step_bytes=lag_step_bytes,
+            max_detect_period_bytes=max_detect_period_bytes,
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Periodicity analysis failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "periodicity",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} repeated_chunks={repeated_chunk_hash_count} lag_ratio={lag_match_ratio} "
+                "detected_period={detected_prefix_period_bytes}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
+    try:
+        write_periodicity_csv(out, records)
+        if out_json:
+            write_periodicity_json(out_json, records)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"Periodicity analysis complete. CSV → {out}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("periodicity complete")
+
+    if json_summary:
+        import json
+
+        mean_lag = (sum(float(rec["lag_match_ratio"]) for rec in records) / len(records)) if records else 0.0
+        summary = {
+            "rows": len(records),
+            "variants": variant_count,
+            "mean_lag_match_ratio": mean_lag,
             "csv": str(out),
             "json": str(out_json) if out_json else None,
         }
