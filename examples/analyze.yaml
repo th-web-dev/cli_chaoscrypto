@@ -23,6 +23,9 @@ metrics:
   hamming_weight_window:
     enabled: true
     window_bits: 512
+  nist_suite:
+    enabled: false
+    alpha: 0.01
 
 output:
   include_timestamp_utc: true

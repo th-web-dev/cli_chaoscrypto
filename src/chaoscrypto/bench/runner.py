@@ -426,6 +426,20 @@ def _run_single_variant(
     return record
 
 
+def _run_benchmark_task(args: Tuple[FullConfig, Dict[str, Any], int]) -> Dict[str, Any]:
+    cfg, variant, repeat_index = args
+    setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+    set_command_context("benchmark")
+    return _run_single_variant(
+        bench=cfg.bench,
+        metrics=cfg.metrics,
+        output=cfg.output,
+        validate=cfg.validate,
+        variant=variant,
+        repeat_index=repeat_index,
+    )
+
+
 def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
     setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
     set_command_context("benchmark")
@@ -435,24 +449,12 @@ def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
         for repeat_index in range(config.bench.repeats):
             tasks.append((variant, repeat_index))
 
-    def runner(task: Tuple[Dict[str, Any], int]) -> Dict[str, Any]:
-        setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
-        set_command_context("benchmark")
-        variant, repeat_index = task
-        return _run_single_variant(
-            bench=config.bench,
-            metrics=config.metrics,
-            output=config.output,
-            validate=config.validate,
-            variant=variant,
-            repeat_index=repeat_index,
-        )
-
     if jobs and jobs > 1:
+        task_args = [(config, variant, repeat_index) for variant, repeat_index in tasks]
         with ProcessPoolExecutor(max_workers=jobs) as ex:
-            results = list(ex.map(runner, tasks))
+            results = list(ex.map(_run_benchmark_task, task_args))
     else:
-        results = [runner(task) for task in tasks]
+        results = [_run_benchmark_task((config, variant, repeat_index)) for variant, repeat_index in tasks]
 
     # Sort deterministically
     def sort_key(rec: Dict[str, Any]):

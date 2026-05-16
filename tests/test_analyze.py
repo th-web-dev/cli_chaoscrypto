@@ -141,3 +141,50 @@ def test_analyze_determinism_and_variation(tmp_path, monkeypatch):
 
     # Sorting stability
     assert rows1 == sorted(rows1, key=lambda r: (int(r["coord_x"]), int(r["coord_y"]), float(r["dt"]), int(r["warmup"]), float(r["quant_k"]), int(r["size"]), float(r["scale"]), r.get("seed_strategy")))
+
+
+def test_analyze_parallel_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--profile",
+            "alice",
+            "--token",
+            "secret",
+            "--size",
+            "128",
+            "--scale",
+            "0.1",
+        ],
+    )
+    cfg = {
+        "analyze": {"profile": "alice", "token": "secret", "coord": [0, 0], "nbytes": 4096},
+        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3", "window_mean_3x3"]},
+        "metrics": {
+            "bit_balance": True,
+            "byte_histogram": True,
+            "chi_square_bytes": True,
+            "autocorr_bits": {"enabled": False, "max_lag": 0},
+            "runs_test_bits": True,
+            "hamming_weight_window": {"enabled": False, "window_bits": 0},
+        },
+        "output": {
+            "include_timestamp_utc": False,
+            "include_field_fingerprint": False,
+            "include_keystream_sha256": True,
+            "include_preview_base64": False,
+            "preview_bytes": 8,
+        },
+        "validate": {"assert_deterministic_within_run": True},
+    }
+    cfg_path = Path(tmp_path) / "parallel_analyze.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    csv_out = Path(tmp_path) / "parallel_out.csv"
+    res = runner.invoke(app, ["analyze", "--config", str(cfg_path), "--out", str(csv_out), "--jobs", "2"])
+    assert res.exit_code == 0, res.output
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 4

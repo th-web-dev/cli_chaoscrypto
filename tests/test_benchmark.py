@@ -175,3 +175,57 @@ def test_benchmark_determinism_and_variation(tmp_path, monkeypatch):
     with csv3.open() as f:
         rows3 = list(csv.DictReader(f))
     assert rows1[0]["keystream_sha256"] != rows3[0]["keystream_sha256"]
+
+
+def test_benchmark_parallel_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--profile",
+            "alice",
+            "--token",
+            "secret",
+            "--size",
+            "128",
+            "--scale",
+            "0.1",
+        ],
+    )
+
+    cfg = {
+        "bench": {
+            "profile": "alice",
+            "token": "secret",
+            "coord": [1, 2],
+            "nbytes": 4096,
+            "repeats": 1,
+            "field_regen_each_repeat": True,
+        },
+        "matrix": {"dt": [0.01], "warmup": [100, 1000], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3", "window_mean_3x3"]},
+        "metrics": {
+            "include_field_time": False,
+            "include_xor_time": False,
+            "include_decrypt_time": False,
+            "keystream_hash": "sha256",
+        },
+        "output": {
+            "include_timestamp_utc": False,
+            "include_field_fingerprint": True,
+            "include_keystream_preview": False,
+            "keystream_preview_bytes": 8,
+        },
+        "validate": {"assert_deterministic_within_run": True, "extra_determinism_check": False},
+    }
+    cfg_path = Path(tmp_path) / "parallel_bench.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    csv_out = Path(tmp_path) / "parallel_bench.csv"
+
+    res = runner.invoke(app, ["benchmark", "--config", str(cfg_path), "--out", str(csv_out), "--jobs", "2"])
+    assert res.exit_code == 0, res.output
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 4

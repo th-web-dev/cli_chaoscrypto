@@ -6,7 +6,7 @@ analyze:
 
 matrix:
   dt: [0.01]
-  warmup: [100, 1000, 5000]
+  warmup: [100, 1000]
   quant_k: [100000.0, 10000000.0]
   size: [128]
   scale: [0.1]
@@ -19,13 +19,13 @@ metrics:
   chi_square_bytes: true
   autocorr_bits:
     enabled: true
-    max_lag: 32
+    max_lag: 8
   runs_test_bits: true
   hamming_weight_window:
     enabled: true
     window_bits: 1024
   nist_suite:
-    enabled: false
+    enabled: true
     alpha: 0.01
 
 output:

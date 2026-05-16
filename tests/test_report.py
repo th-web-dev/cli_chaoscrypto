@@ -89,6 +89,17 @@ def _write_analysis_csv(path: Path):
         "byte_entropy_approx": "7.9",
         "byte_top5": "00:5|ff:4",
         "keystream_preview_base64": "",
+        "nist_passed_count": "11",
+        "nist_failed_count": "2",
+        "nist_skipped_count": "2",
+        "nist_total_runtime_s": "1.23",
+        "nist_failed_tests": "non_overlapping_template_matching,overlapping_template_matching",
+        "nist_frequency_monobit_status": "pass",
+        "nist_frequency_monobit_p_value": "0.7",
+        "nist_non_overlapping_template_matching_status": "fail",
+        "nist_non_overlapping_template_matching_p_value": "0.0001",
+        "nist_random_excursions_status": "skip",
+        "nist_random_excursions_p_value": "",
     }
     rows = [
         {
@@ -203,10 +214,12 @@ def test_report_smoke(tmp_path):
     assert "# ChaosCrypto WP2 – Report" in content
     assert "Benchmark Summary" in content
     assert "Analyze Summary" in content
+    assert "NIST Summary" in content
     assert "seed_strategy" in content
     assert "/mnt/" not in content and "C:\\" not in content
     assert "Top throughput per seed_strategy (best across memory types)" in content
     assert "Top throughput per seed_strategy and memory_type" in content
+    assert "frequency_monobit" in content
     # Check table row counts (2 rows for seed_strategy, 4 for seed/memory)
     seed_section = content.split("Top throughput per seed_strategy (best across memory types):")[1].split(
         "Top throughput per seed_strategy and memory_type:"

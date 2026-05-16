@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+from chaoscrypto.analysis.nist_validator import NIST_TEST_NAMES
 from chaoscrypto.utils.records import normalize_record_memory_type
 from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
 
@@ -61,7 +62,7 @@ class BenchAgg:
 class AnalyzeAgg:
     key: Tuple
     count: int
-    metrics: Dict[str, float | None]
+    metrics: Dict[str, Any]
     params: Dict[str, Any]
     keystream_sha256: str | None
 
@@ -160,12 +161,27 @@ def _group_analyze(rows: List[Dict[str, Any]]) -> List[AnalyzeAgg]:
             "runs_norm_diff": mean(collect("runs_norm_diff")),
             "byte_chi2_norm": mean(collect("byte_chi2_norm")),
             "autocorr_lag_1": mean(collect("autocorr_lag_1")),
+            "nist_passed_count": mean(collect("nist_passed_count")) if collect("nist_passed_count") else None,
+            "nist_failed_count": mean(collect("nist_failed_count")) if collect("nist_failed_count") else None,
+            "nist_skipped_count": mean(collect("nist_skipped_count")) if collect("nist_skipped_count") else None,
+            "nist_total_runtime_s": mean(collect("nist_total_runtime_s")) if collect("nist_total_runtime_s") else None,
         }
         sample = lst[0]
         # Hamming weights
         for field in ["hw_win_mean", "hw_win_std", "hw_win_min", "hw_win_max"]:
             vals = collect(field)
             metrics[field] = mean(vals) if vals else None
+        for test_name in NIST_TEST_NAMES:
+            status_key = f"nist_{test_name}_status"
+            pvalue_key = f"nist_{test_name}_p_value"
+            statuses = [str(x.get(status_key)) for x in lst if x.get(status_key)]
+            pvals = collect(pvalue_key)
+            if statuses:
+                metrics[f"{status_key}_pass_count"] = sum(s == "pass" for s in statuses)
+                metrics[f"{status_key}_fail_count"] = sum(s == "fail" for s in statuses)
+                metrics[f"{status_key}_skip_count"] = sum(s == "skip" for s in statuses)
+            if pvals:
+                metrics[f"{pvalue_key}_mean"] = mean(pvals)
 
         params = {
             "dt": key[0],
@@ -331,6 +347,32 @@ def _render_markdown(
                 f"{(a.metrics.get('runs_norm_diff') or 0):.6f} | {(a.metrics.get('autocorr_lag_1') or 0):.6f} | {a.keystream_sha256 or ''} |"
             )
     lines.append("")
+
+    if analyze_aggs and any(a.metrics.get("nist_passed_count") is not None for a in analyze_aggs):
+        total_passed = sum(int(round(a.metrics.get("nist_passed_count") or 0)) for a in analyze_aggs)
+        total_failed = sum(int(round(a.metrics.get("nist_failed_count") or 0)) for a in analyze_aggs)
+        total_skipped = sum(int(round(a.metrics.get("nist_skipped_count") or 0)) for a in analyze_aggs)
+        runtime_vals = [a.metrics.get("nist_total_runtime_s") for a in analyze_aggs if a.metrics.get("nist_total_runtime_s") is not None]
+        lines.append("## NIST Summary")
+        lines.append(f"- Variants with NIST results: {len(analyze_aggs)}")
+        lines.append(f"- Total passed tests: {total_passed}")
+        lines.append(f"- Total failed tests: {total_failed}")
+        lines.append(f"- Total skipped tests: {total_skipped}")
+        if runtime_vals:
+            lines.append(f"- NIST runtime mean/min/max (s): {tuple(round(x, 3) for x in (sum(runtime_vals) / len(runtime_vals), min(runtime_vals), max(runtime_vals)))}")
+        lines.append("")
+        lines.append("| test | pass | fail | skip | mean_p_value |")
+        lines.append("|---|---|---|---|---|")
+        for test_name in NIST_TEST_NAMES:
+            status_key = f"nist_{test_name}_status"
+            pvalue_key = f"nist_{test_name}_p_value"
+            pass_count = sum(int(a.metrics.get(f"{status_key}_pass_count") or 0) for a in analyze_aggs)
+            fail_count = sum(int(a.metrics.get(f"{status_key}_fail_count") or 0) for a in analyze_aggs)
+            skip_count = sum(int(a.metrics.get(f"{status_key}_skip_count") or 0) for a in analyze_aggs)
+            pvals = [a.metrics.get(f"{pvalue_key}_mean") for a in analyze_aggs if a.metrics.get(f"{pvalue_key}_mean") is not None]
+            mean_p = f"{sum(pvals) / len(pvals):.6f}" if pvals else ""
+            lines.append(f"| {test_name} | {pass_count} | {fail_count} | {skip_count} | {mean_p} |")
+        lines.append("")
 
     # Best candidates
     lines.append("## Best Candidates (heuristic score)")

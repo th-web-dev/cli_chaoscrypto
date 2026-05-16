@@ -45,6 +45,7 @@ from chaoscrypto.orchestrator.pipeline import (
     derive_initial_state,
     generate_keystream,
     encrypt_bytes,
+    decrypt_bytes,
 )
 from chaoscrypto.utils.logging import get_logger, resolve_log_level, set_command_context, setup_logging
 from chaoscrypto.cli.ui import (
@@ -883,7 +884,7 @@ def analyze(
 
     max_autocorr = cfg.metrics.autocorr_bits_max_lag if cfg.metrics.autocorr_bits_enabled else 0
     try:
-        write_analyze_csv(out, records, max_autocorr=max_autocorr)
+        write_analyze_csv(out, records, max_autocorr=max_autocorr, include_nist=cfg.metrics.nist_suite_enabled)
         if out_json:
             write_analyze_json(out_json, records)
     except Exception as exc:  # noqa: BLE001

@@ -4,6 +4,7 @@ import base64
 import csv
 import hashlib
 import itertools
+import json
 import math
 import os
 from dataclasses import dataclass
@@ -25,9 +26,15 @@ from chaoscrypto.orchestrator.pipeline import (
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.core.memory.base import list_memory_models
 from chaoscrypto.core.seed.base import list_seed_strategies
+from chaoscrypto.analysis.nist_validator import (
+    NIST_CSV_FIELDS,
+    flatten_nist_results,
+    run_full_nist_suite,
+)
 from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
 
 logger = get_logger(__name__)
+_FIELD_CACHE: Dict[Tuple[bytes, str, int, float], Tuple[np.ndarray, str]] = {}
 
 
 class ConfigError(Exception):
@@ -64,6 +71,8 @@ class MetricsConfig:
     runs_test_bits: bool
     hamming_weight_enabled: bool
     hamming_weight_window_bits: int
+    nist_suite_enabled: bool
+    nist_alpha: float
 
 
 @dataclass(frozen=True)
@@ -166,11 +175,15 @@ def parse_config(path: Path) -> FullConfig:
         runs_test_bits=bool(metrics.get("runs_test_bits", True)),
         hamming_weight_enabled=bool((hw or {}).get("enabled", False)),
         hamming_weight_window_bits=int((hw or {}).get("window_bits", 0)),
+        nist_suite_enabled=bool((metrics.get("nist_suite", {}) or {}).get("enabled", False)),
+        nist_alpha=float((metrics.get("nist_suite", {}) or {}).get("alpha", 0.01)),
     )
     if metrics_cfg.autocorr_bits_enabled and metrics_cfg.autocorr_bits_max_lag <= 0:
         raise ConfigError("metrics.autocorr_bits.max_lag must be > 0 when enabled.")
     if metrics_cfg.hamming_weight_enabled and metrics_cfg.hamming_weight_window_bits <= 0:
         raise ConfigError("metrics.hamming_weight_window.window_bits must be > 0 when enabled.")
+    if metrics_cfg.nist_alpha <= 0 or metrics_cfg.nist_alpha >= 1:
+        raise ConfigError("metrics.nist_suite.alpha must be between 0 and 1.")
 
     output_cfg = OutputConfig(
         include_timestamp_utc=bool(output.get("include_timestamp_utc", True)),
@@ -313,7 +326,12 @@ def _hamming_weight_window(bits: np.ndarray, window_bits: int) -> Dict[str, Any]
 
 
 def _generate_keystream(params: MemoryParams, coord: Tuple[int, int], nbytes: int, dt: float, warmup: int, quant_k: float, token_bytes: bytes, seed_strategy: str):
-    field, field_fp = build_memory_field(token_bytes, params)
+    cache_key = (token_bytes, params.type, params.size, params.scale)
+    cached = _FIELD_CACHE.get(cache_key)
+    if cached is None:
+        cached = build_memory_field(token_bytes, params)
+        _FIELD_CACHE[cache_key] = cached
+    field, field_fp = cached
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
     ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
     return ks, field_fp
@@ -377,6 +395,12 @@ def _analyze_one(
         metrics.update(_runs_test(bits))
     if cfg.metrics.hamming_weight_enabled:
         metrics.update(_hamming_weight_window(bits, cfg.metrics.hamming_weight_window_bits))
+    if cfg.metrics.nist_suite_enabled:
+        nist_results = run_full_nist_suite(ks, alpha=cfg.metrics.nist_alpha)
+        metrics.update(flatten_nist_results(nist_results))
+        metrics["nist_results_json"] = json.dumps(nist_results, sort_keys=True)
+    else:
+        metrics["nist_results_json"] = None
 
     record: Dict[str, Any] = {
         "profile": cfg.analyze.profile,
@@ -419,6 +443,13 @@ def _analyze_one(
     return record
 
 
+def _run_analyze_task(args: Tuple[FullConfig, Dict[str, Any], bytes, str]) -> Dict[str, Any]:
+    cfg, variant, token_bytes, token_fp = args
+    setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
+    set_command_context("analyze")
+    return _analyze_one(cfg, variant, token_bytes, token_fp)
+
+
 def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
     setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
     set_command_context("analyze")
@@ -427,18 +458,14 @@ def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
     token_bytes = config.analyze.token.encode(constants.ENCODING)
     token_fp = token_fingerprint(token_bytes)
 
-    def runner(variant: Dict[str, Any]) -> Dict[str, Any]:
-        setup_logging(os.environ.get("CHAOSCRYPTO_LOG_LEVEL", "WARNING"))
-        set_command_context("analyze")
-        return _analyze_one(config, variant, token_bytes, token_fp)
-
     if jobs and jobs > 1:
         from concurrent.futures import ProcessPoolExecutor
 
+        task_args = [(config, variant, token_bytes, token_fp) for variant in tasks]
         with ProcessPoolExecutor(max_workers=jobs) as ex:
-            records = list(ex.map(runner, tasks))
+            records = list(ex.map(_run_analyze_task, task_args))
     else:
-        records = [runner(v) for v in tasks]
+        records = [_run_analyze_task((config, variant, token_bytes, token_fp)) for variant in tasks]
 
     def sort_key(rec: Dict[str, Any]):
         return (
@@ -486,21 +513,29 @@ CSV_FIELDS_BASE = [
     "hw_win_std",
     "hw_win_min",
     "hw_win_max",
+    "nist_passed_count",
+    "nist_failed_count",
+    "nist_skipped_count",
+    "nist_total_runtime_s",
+    "nist_failed_tests",
     "keystream_preview_base64",
+    "nist_results_json",
 ]
 
 
-def csv_fields(max_autocorr: int) -> List[str]:
+def csv_fields(max_autocorr: int, include_nist: bool = False) -> List[str]:
     fields = list(CSV_FIELDS_BASE)
     for lag in range(1, max_autocorr + 1):
         fields.append(f"autocorr_lag_{lag}")
+    if include_nist:
+        fields.extend(NIST_CSV_FIELDS)
     return fields
 
 
-def write_csv(path: Path, records: List[Dict[str, Any]], max_autocorr: int) -> None:
+def write_csv(path: Path, records: List[Dict[str, Any]], max_autocorr: int, include_nist: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_fields(max_autocorr), extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=csv_fields(max_autocorr, include_nist=include_nist), extrasaction="ignore")
         writer.writeheader()
         for rec in records:
             writer.writerow(rec)

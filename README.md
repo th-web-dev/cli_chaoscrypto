@@ -212,6 +212,19 @@ What `out/ba1` contains:
 - `analyze/analysis.csv` + `analyze/analysis.json`
 - `report/report.md` and `report/plots/` (PNG)
 
+Optional BA2/NIST validation:
+- Add `metrics.nist_suite.enabled: true` and `metrics.nist_suite.alpha: 0.01` to your analyze YAML.
+- The analyze CSV/JSON will then include `nist_*` summary fields plus `nist_results_json` for detailed per-test output.
+- Some NIST tests are automatically skipped when the keystream is too short for that specific method.
+
+BA2 batch workflow:
+- Benchmark config: `examples/ba2_benchmark.yaml`
+- Analyze+NIST config: `examples/ba2_analyze_nist.yaml`
+- Bash script: `scripts/run_ba2.sh`
+- PowerShell script: `scripts/run_ba2.ps1`
+- Default output folder: `out/ba2_nist`
+- Parallelism: use `JOBS=2 scripts/run_ba2.sh` or `.\scripts\run_ba2.ps1 -Jobs 2`
+
 Clean (safe warning: deletes the entire folder):
 
 PowerShell:
