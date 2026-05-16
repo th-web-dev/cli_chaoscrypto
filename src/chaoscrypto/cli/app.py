@@ -62,6 +62,12 @@ from chaoscrypto.analysis.nist_batch import (
     write_nist_summary_csv,
     write_nist_batch_json,
 )
+from chaoscrypto.analysis.ba2_eval import (
+    run_ba2_eval,
+    write_ba2_eval_markdown,
+    write_ba2_eval_overview_csv,
+    write_ba2_eval_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -1053,6 +1059,79 @@ def nist_batch(
             "out_json": str(out_json) if out_json else None,
         }
         typer.echo(json.dumps(payload))
+
+
+@app.command("ba2-eval")
+def ba2_eval(
+    nist_runs_csv: Path = typer.Option(..., "--nist-runs-csv", exists=True, readable=True, help="NIST run-level CSV"),
+    nist_summary_csv: Path = typer.Option(..., "--nist-summary-csv", exists=True, readable=True, help="NIST test summary CSV"),
+    avalanche_csv: Path = typer.Option(..., "--avalanche-csv", exists=True, readable=True, help="Avalanche CSV"),
+    periodicity_csv: Path = typer.Option(..., "--periodicity-csv", exists=True, readable=True, help="Periodicity CSV"),
+    out_md: Path = typer.Option(..., "--out-md", help="BA2 markdown summary path"),
+    out_csv: Path = typer.Option(..., "--out-csv", help="BA2 overview CSV path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional BA2 JSON summary path"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Build a BA2-oriented consolidated evaluation summary from existing CSV outputs.
+    """
+    set_command_context("ba2-eval")
+    print_run_header("ba2-eval", profile_name=None, profile_dir_path=None, profile_files=None, memory_params=None, token_fingerprint=None)
+    print_io_read(nist_runs_csv)
+    print_io_read(nist_summary_csv)
+    print_io_read(avalanche_csv)
+    print_io_read(periodicity_csv)
+
+    try:
+        payload = run_ba2_eval(
+            nist_runs_csv=nist_runs_csv,
+            nist_summary_csv=nist_summary_csv,
+            avalanche_csv=avalanche_csv,
+            periodicity_csv=periodicity_csv,
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"BA2 eval failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        write_ba2_eval_markdown(out_md, payload["markdown"])
+        write_ba2_eval_overview_csv(out_csv, payload["overview_rows"])
+        if out_json:
+            write_ba2_eval_json(
+                out_json,
+                {
+                    "nist": payload["nist"],
+                    "avalanche": payload["avalanche"],
+                    "periodicity": payload["periodicity"],
+                    "overview_rows": payload["overview_rows"],
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write BA2 eval outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out_md)
+    print_io_write(out_csv)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"BA2 eval complete. Markdown → {out_md}", fg=typer.colors.GREEN)
+    typer.secho(f"BA2 eval complete. CSV → {out_csv}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("ba2 eval complete")
+
+    if json_summary:
+        import json
+
+        summary = {
+            "nist_variants": payload["nist"].get("variants_total"),
+            "avalanche_rows_evaluated": payload["avalanche"].get("rows_evaluated"),
+            "periodicity_variants": payload["periodicity"].get("variants_total"),
+            "out_md": str(out_md),
+            "out_csv": str(out_csv),
+            "out_json": str(out_json) if out_json else None,
+        }
+        typer.echo(json.dumps(summary))
 
 
 @app.command("platform-check")

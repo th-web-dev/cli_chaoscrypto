@@ -9,6 +9,30 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 4.1: Konsolidierte BA2-Evaluationsausgabe (`ba2-eval`)
+
+Technisch:
+- Ein neues Modul `src/chaoscrypto/analysis/ba2_eval.py` wurde ergänzt.
+- Der neue CLI-Befehl `ba2-eval` konsolidiert bestehende Ergebnisdateien:
+- `nist_runs.csv`
+- `nist_summary.csv`
+- `avalanche.csv` bzw. `avalanche_v2.csv`
+- `periodicity.csv`
+- Als Ausgabe werden automatisch erzeugt:
+- ein BA2-Readout in Markdown (`ba2_eval_summary.md`)
+- eine kompakte KPI-Tabelle (`ba2_eval_summary.csv`)
+- optional ein JSON-Export (`ba2_eval_summary.json`)
+- Die Auswertung enthält zentrale Kennzahlen für:
+- NIST (Fail-Share, durchschnittlich bestandene/fehlgeschlagene Tests, kritischste Tests)
+- Avalanche (Mean/Min/Max Hamming-Ratio, Skip/Evaluate-Zählung, Variant-Ranking nach Nähe zu 0.5)
+- Periodizität (Lag-Match-Ratio, Chunk-Hash-Repetitionen, erkannte Präfixperioden)
+- Die Testabdeckung wurde mit `tests/test_ba2_eval.py` um einen End-to-End-CLI-Test erweitert.
+
+BA-Relevanz:
+- Dieser Schritt macht aus mehreren separaten Rohdateien eine direkte, zitierfähige BA2-Auswertung.
+- Ergebnisse zu Usability (automatisierbare Auswertung), Performance/Security-Indikatoren und Methodenvergleich werden konsistent in einem Artefakt zusammengeführt.
+- Die Trennung zwischen Rohmessung und konsolidierter Interpretation ist für Nachvollziehbarkeit und Reproduzierbarkeit der BA2-Argumentation zentral.
+
 ### Task 3.3: NIST-Batch-Workflow und BA2-Aggregation
 
 Technisch:
