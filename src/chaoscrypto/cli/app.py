@@ -46,6 +46,11 @@ from chaoscrypto.analysis.platform_divergence import (
     write_platform_compare_csv,
     write_platform_compare_json,
 )
+from chaoscrypto.analysis.avalanche import (
+    run_avalanche,
+    write_avalanche_csv,
+    write_avalanche_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -1092,6 +1097,123 @@ def platform_compare(
     if json_summary:
         import json
 
+        typer.echo(json.dumps(summary))
+
+
+@app.command("avalanche")
+def avalanche(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out: Path = typer.Option(..., "--out", "-o", help="CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    token_bit_flips: int = typer.Option(8, "--token-bit-flips", help="Number of token bit positions to flip (from LSB upward)"),
+    coord_bit_flips: int = typer.Option(8, "--coord-bit-flips", help="Number of coord x/y bit positions to flip (from LSB upward)"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Run avalanche/sensitivity tests by flipping single bits in token and coordinates.
+    """
+    set_command_context("avalanche")
+    if token_bit_flips < 0 or coord_bit_flips < 0:
+        typer.secho("token_bit_flips and coord_bit_flips must be >= 0", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
+    variant_count = (
+        len(cfg.analyze.coords)
+        * len(cfg.matrix.dt)
+        * len(cfg.matrix.warmup)
+        * len(cfg.matrix.quant_k)
+        * len(cfg.matrix.size)
+        * len(cfg.matrix.scale)
+        * len(cfg.matrix.seed_strategy)
+        * len(cfg.matrix.memory_type)
+    )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "avalanche",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
+    logger.info(
+        "Loaded avalanche config=%s profile=%s variants=%d token_bit_flips=%d coord_bit_flips=%d",
+        config,
+        cfg.analyze.profile,
+        variant_count,
+        token_bit_flips,
+        coord_bit_flips,
+    )
+
+    try:
+        records = run_avalanche(
+            cfg,
+            jobs=jobs,
+            token_bit_flips=token_bit_flips,
+            coord_bit_flips=coord_bit_flips,
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Avalanche test failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "avalanche",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} perturb={perturbation_type}[{perturbation_bit_index}] hd_ratio={hamming_distance_ratio}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
+    try:
+        write_avalanche_csv(out, records)
+        if out_json:
+            write_avalanche_json(out_json, records)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"Avalanche test complete. CSV → {out}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("avalanche complete")
+
+    if json_summary:
+        import json
+
+        mean_ratio = (sum(float(rec["hamming_distance_ratio"]) for rec in records) / len(records)) if records else 0.0
+        summary = {
+            "rows": len(records),
+            "variants": variant_count,
+            "mean_hamming_distance_ratio": mean_ratio,
+            "csv": str(out),
+            "json": str(out_json) if out_json else None,
+        }
         typer.echo(json.dumps(summary))
 
 

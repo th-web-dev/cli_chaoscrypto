@@ -66,3 +66,18 @@ BA-Relevanz:
 - Diese Erweiterung beantwortet eine zentrale Forschungsfrage von BA2: ob identische Eingaben auf unterschiedlichen Laufzeitumgebungen tatsächlich identische Keystreams erzeugen.
 - Damit kann systematisch geprüft werden, ob Floating-Point- oder Plattformunterschiede die behauptete Deterministik des Systems beeinträchtigen.
 - Die Ergebnisse lassen sich direkt als Nachweis in die BA2-Diskussion zu Reproduzierbarkeit, Robustheit und Grenzen des Prototyps übernehmen.
+
+### Task 3.2: Sensitivity / Avalanche-Effekt
+
+Technisch:
+- Es wurde ein neues Modul `src/chaoscrypto/analysis/avalanche.py` ergänzt.
+- Der neue CLI-Befehl `avalanche` erzeugt systematisch Perturbationen durch Single-Bit-Flips im Token sowie in `coord_x` und `coord_y`.
+- Pro Perturbation werden Basis- und Vergleichskeystream berechnet und über die Hamming-Distanz auf Bitebene ausgewertet.
+- Die Ergebnisse werden in CSV/JSON exportiert, inklusive `hamming_distance_bits` und `hamming_distance_ratio`.
+- Eine BA2-Beispielkonfiguration wurde in `examples/ba2_avalanche.yaml` ergänzt.
+- Die Testabdeckung wurde um CLI-Smoke- und Validierungstests für den neuen Avalanche-Workflow erweitert.
+
+BA-Relevanz:
+- Diese Erweiterung liefert eine direkte empirische Messung der Sensitivität gegenüber minimalen Eingabeänderungen.
+- Damit kann für BA2 nachvollziehbar geprüft werden, wie nah das System am erwarteten Avalanche-Verhalten (ca. 50% Bitänderung) liegt.
+- Die Ausgaben sind direkt für Resultatkapitel und Diskussion nutzbar, weil sie pro Variantenlauf reproduzierbar und vergleichbar sind.
