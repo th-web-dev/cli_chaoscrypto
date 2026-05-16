@@ -9,6 +9,25 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 5.1: Usability-Instrumentierung mit `study-run`
+
+Technisch:
+- Ein neues Modul `src/chaoscrypto/analysis/usability.py` wurde ergänzt.
+- Der neue CLI-Befehl `study-run` führt beliebige ChaosCrypto-Kommandos aus und protokolliert BA2-relevante Nutzungsmetriken in eine CSV-Logdatei.
+- Pro Run werden automatisch erfasst:
+- Command und Argumente (`command_argv_json`, Argumentanzahl, Flag-Anzahl)
+- Laufzeit (`duration_s`)
+- Status/Exit-Code (`success`/`fail`)
+- optionale Artefakt-Hashes zur Reproduzierbarkeitsprüfung
+- Anzahl vorheriger Fehlversuche vor einem erfolgreichen Run (`failed_attempts_before_success`)
+- Bei erneutem Lauf mit gleichem Command und `repro_key` wird `repro_match_previous` gesetzt, wenn die Artefakt-Hashes identisch sind.
+- Testabdeckung wurde mit `tests/test_usability_log.py` ergänzt.
+
+BA-Relevanz:
+- Damit ist der Usability-Pfeiler von BA2 quantitativ messbar statt nur qualitativ beschreibbar.
+- Die erhobenen Metriken erlauben Aussagen über Bedienaufwand, Fehlerraten und Reproduzierbarkeit entlang realer Evaluationsläufe.
+- Die Logs können direkt für Methodik- und Ergebniskapitel genutzt werden.
+
 ### Task 4.2: Methodik-Schärfung für `ba2-eval` (NIST-Interpretation)
 
 Technisch:

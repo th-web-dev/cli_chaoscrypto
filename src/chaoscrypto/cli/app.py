@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+import uuid
 from pathlib import Path
+from time import perf_counter
 from typing import Tuple, List
 
 import typer
@@ -68,6 +72,7 @@ from chaoscrypto.analysis.ba2_eval import (
     write_ba2_eval_overview_csv,
     write_ba2_eval_json,
 )
+from chaoscrypto.analysis.usability import append_usability_log, build_usability_row, read_usability_log
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -1132,6 +1137,58 @@ def ba2_eval(
             "out_json": str(out_json) if out_json else None,
         }
         typer.echo(json.dumps(summary))
+
+
+@app.command("study-run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def study_run(
+    ctx: typer.Context,
+    out_log: Path = typer.Option(..., "--out-log", help="Usability CSV log path"),
+    session_id: str = typer.Option(..., "--session-id", help="Session identifier for BA2 study runs"),
+    repro_key: str | None = typer.Option(None, "--repro-key", help="Optional reproducibility key for comparable reruns"),
+    artifact: List[Path] = typer.Option([], "--artifact", help="Artifact path to hash for reproducibility checks (repeatable)"),
+):
+    """
+    Execute a ChaosCrypto CLI command and log usability/performance metadata for BA2.
+    """
+    set_command_context("study-run")
+    command_argv = list(ctx.args)
+    if not command_argv:
+        typer.secho("No target command provided. Example: study-run --out-log out/ba2/usability.csv --session-id s1 analyze --config ...", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if command_argv and command_argv[0] == "study-run":
+        typer.secho("Nested study-run is not allowed.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    target_cmd = [sys.executable, "-m", "chaoscrypto.cli.app", *command_argv]
+    typer.echo(f"[study-run] executing: {' '.join(command_argv)}")
+    start = perf_counter()
+    completed = subprocess.run(target_cmd, text=True, capture_output=True, check=False)  # noqa: S603
+    duration_s = perf_counter() - start
+
+    if completed.stdout:
+        typer.echo(completed.stdout.rstrip())
+    if completed.stderr:
+        typer.echo(completed.stderr.rstrip(), err=True)
+
+    existing_rows = read_usability_log(out_log)
+    status = "success" if completed.returncode == 0 else "fail"
+    error_message = None if completed.returncode == 0 else f"exit_code={completed.returncode}"
+    row = build_usability_row(
+        session_id=session_id or uuid.uuid4().hex,
+        command_argv=command_argv,
+        duration_s=duration_s,
+        status=status,
+        exit_code=completed.returncode,
+        artifact_paths=artifact,
+        repro_key=repro_key,
+        error_message=error_message,
+        existing_rows=existing_rows,
+    )
+    append_usability_log(out_log, row)
+    print_io_write(out_log)
+    typer.secho(f"study-run logged status={status} duration_s={round(duration_s, 4)}", fg=typer.colors.GREEN if completed.returncode == 0 else typer.colors.RED)
+    if completed.returncode != 0:
+        raise typer.Exit(code=completed.returncode)
 
 
 @app.command("platform-check")
