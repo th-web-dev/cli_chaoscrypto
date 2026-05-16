@@ -6,6 +6,8 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Dict, List
 
+KNOWN_STRICT_TEMPLATE_TESTS = {"non_overlapping_template_matching", "overlapping_template_matching"}
+
 
 def _read_csv(path: Path) -> List[Dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
@@ -49,12 +51,35 @@ def _summarize_nist(runs: List[Dict[str, str]], tests: List[Dict[str, str]]) -> 
         key=lambda r: (_to_int(r.get("n_fail")) or 0, -(_to_float(r.get("pass_rate")) or 0.0)),
         reverse=True,
     )[:5]
+    core_tests = [r for r in tests if (r.get("test_name") or "") not in KNOWN_STRICT_TEMPLATE_TESTS]
+    core_fail_tests = sum(1 for r in core_tests if (_to_int(r.get("n_fail")) or 0) > 0)
+    by_memory_type: Dict[str, List[int]] = {}
+    by_seed_strategy: Dict[str, List[int]] = {}
+    by_quant_k: Dict[str, List[int]] = {}
+    by_warmup: Dict[str, List[int]] = {}
+    by_dt: Dict[str, List[int]] = {}
+    for row in runs:
+        failed = _to_int(row.get("nist_failed_count"))
+        if failed is None:
+            continue
+        by_memory_type.setdefault(str(row.get("memory_type")), []).append(failed)
+        by_seed_strategy.setdefault(str(row.get("seed_strategy")), []).append(failed)
+        by_quant_k.setdefault(str(row.get("quant_k")), []).append(failed)
+        by_warmup.setdefault(str(row.get("warmup")), []).append(failed)
+        by_dt.setdefault(str(row.get("dt")), []).append(failed)
+
+    def _rank_groups(group: Dict[str, List[int]], top_n: int = 3) -> List[Dict[str, Any]]:
+        ranked = sorted(((k, mean(v)) for k, v in group.items() if v), key=lambda kv: kv[1], reverse=True)
+        return [{"group": k, "mean_failed_tests": v} for k, v in ranked[:top_n]]
+
     return {
         "variants_total": total,
         "variants_with_any_fail": failed_any,
         "variants_fail_share": (failed_any / total) if total else None,
         "mean_passed_tests_per_variant": mean(pass_counts) if pass_counts else None,
         "mean_failed_tests_per_variant": mean(fail_counts) if fail_counts else None,
+        "core_tests_count_excluding_template": len(core_tests),
+        "core_tests_with_any_fail_excluding_template": core_fail_tests,
         "worst_tests": [
             {
                 "test_name": row.get("test_name"),
@@ -63,6 +88,13 @@ def _summarize_nist(runs: List[Dict[str, str]], tests: List[Dict[str, str]]) -> 
             }
             for row in worst_tests
         ],
+        "fail_hotspots": {
+            "memory_type_top3": _rank_groups(by_memory_type),
+            "seed_strategy_top3": _rank_groups(by_seed_strategy),
+            "quant_k_top3": _rank_groups(by_quant_k),
+            "warmup_top3": _rank_groups(by_warmup),
+            "dt_top3": _rank_groups(by_dt),
+        },
     }
 
 
@@ -118,6 +150,8 @@ def _build_overview_rows(nist: Dict[str, Any], avalanche: Dict[str, Any], period
         {"domain": "nist", "metric": "variants_with_any_fail", "value": nist.get("variants_with_any_fail")},
         {"domain": "nist", "metric": "variants_fail_share", "value": nist.get("variants_fail_share")},
         {"domain": "nist", "metric": "mean_passed_tests_per_variant", "value": nist.get("mean_passed_tests_per_variant")},
+        {"domain": "nist", "metric": "core_tests_count_excluding_template", "value": nist.get("core_tests_count_excluding_template")},
+        {"domain": "nist", "metric": "core_tests_with_any_fail_excluding_template", "value": nist.get("core_tests_with_any_fail_excluding_template")},
         {"domain": "avalanche", "metric": "rows_evaluated", "value": avalanche.get("rows_evaluated")},
         {"domain": "avalanche", "metric": "rows_skipped", "value": avalanche.get("rows_skipped")},
         {"domain": "avalanche", "metric": "mean_hamming_ratio", "value": avalanche.get("mean_hamming_ratio")},
@@ -136,9 +170,20 @@ def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicit
     lines.append(f"- Variants with any failed NIST test: {nist.get('variants_with_any_fail')} ({nist.get('variants_fail_share')})")
     lines.append(f"- Mean passed tests per variant: {nist.get('mean_passed_tests_per_variant')}")
     lines.append(f"- Mean failed tests per variant: {nist.get('mean_failed_tests_per_variant')}")
+    lines.append(
+        f"- Core tests (excluding template tests): {nist.get('core_tests_with_any_fail_excluding_template')} with fails out of {nist.get('core_tests_count_excluding_template')}"
+    )
     lines.append("- Worst tests by fail count:")
     for row in nist.get("worst_tests", []):
-        lines.append(f"  - {row.get('test_name')}: n_fail={row.get('n_fail')}, pass_rate={row.get('pass_rate')}")
+        lines.append(f"- {row.get('test_name')}: n_fail={row.get('n_fail')}, pass_rate={row.get('pass_rate')}")
+    hotspots = nist.get("fail_hotspots", {})
+    lines.append("- Fail hotspots (mean failed tests per variant):")
+    for entry in hotspots.get("memory_type_top3", []):
+        lines.append(f"- memory_type={entry.get('group')}: {entry.get('mean_failed_tests')}")
+    for entry in hotspots.get("seed_strategy_top3", []):
+        lines.append(f"- seed_strategy={entry.get('group')}: {entry.get('mean_failed_tests')}")
+    for entry in hotspots.get("quant_k_top3", []):
+        lines.append(f"- quant_k={entry.get('group')}: {entry.get('mean_failed_tests')}")
     lines.append("")
     lines.append("## Avalanche")
     lines.append(f"- Rows evaluated: {avalanche.get('rows_evaluated')}")

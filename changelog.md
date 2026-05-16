@@ -9,6 +9,27 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 4.2: Methodik-Schärfung für `ba2-eval` (NIST-Interpretation)
+
+Technisch:
+- `src/chaoscrypto/analysis/ba2_eval.py` wurde erweitert um methodisch robustere NIST-Kennzahlen.
+- Zusätzlich zur globalen Fail-Quote wird jetzt eine bereinigte Sicht ausgewiesen:
+- Anzahl Core-Tests ohne die beiden bekannten Template-Tests (`non_overlapping_template_matching`, `overlapping_template_matching`)
+- Anzahl Core-Tests mit mindestens einem Fail
+- Neue Fail-Hotspot-Analyse wurde ergänzt (Top-Gruppen nach mittlerer Fail-Anzahl pro Variante) für:
+- `memory_type`
+- `seed_strategy`
+- `quant_k`
+- `warmup`
+- `dt`
+- Die Markdown-Ausgabe wurde erweitert, damit diese Befunde direkt in die BA2-Diskussion übertragbar sind.
+- Tests für den BA2-Eval-Workflow bleiben grün.
+
+BA-Relevanz:
+- Die Auswertung reduziert das Risiko von Fehlinterpretationen, bei denen eine bekannte Testdomäne (Template-Tests) die Gesamtbewertung verzerrt.
+- Parameter-Hotspots liefern eine direkte Brücke von Messdaten zu Forschungsfragen (welche Einstellungen systematisch problematisch sind).
+- Dadurch wird die Ergebnisdiskussion in BA2 argumentativ klarer und wissenschaftlich belastbarer.
+
 ### Task 4.1: Konsolidierte BA2-Evaluationsausgabe (`ba2-eval`)
 
 Technisch:
