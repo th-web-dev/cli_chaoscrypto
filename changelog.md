@@ -51,3 +51,18 @@ BA-Relevanz:
 - Diese Änderung ist die Grundlage für die Performance-Evaluation in BA2.
 - Statt nur Gesamtdurchsatz zu betrachten, kann jetzt analysiert werden, welcher Verarbeitungsschritt den größten Anteil an der Laufzeit hat.
 - Das ist besonders wichtig für spätere Vergleiche zwischen Parametervarianten, Plattformen und möglichen Referenzverfahren.
+
+### Task 2.2: Plattform-Divergenz-Test
+
+Technisch:
+- Es wurde ein neues Modul `src/chaoscrypto/analysis/platform_divergence.py` ergänzt.
+- Der neue CLI-Befehl `platform-check` erzeugt pro Variantenlauf einen Export mit Laufzeitumgebung, `field_fingerprint` und `keystream_sha256`.
+- Der neue CLI-Befehl `platform-compare` vergleicht zwei Plattform-Exports automatisiert und protokolliert pro Variante, ob `field_fingerprint` und `keystream_sha256` übereinstimmen.
+- Für den Plattform-Check wird die bestehende `analyze`-Konfigurationsstruktur wiederverwendet, damit keine zweite Matrixlogik gepflegt werden muss.
+- Eine Beispielkonfiguration wurde in `examples/ba2_platform_check.yaml` ergänzt.
+- Die Testabdeckung wurde um einen Smoke-Test für den Export und einen Divergenz-Test für absichtlich manipulierte Hashes erweitert.
+
+BA-Relevanz:
+- Diese Erweiterung beantwortet eine zentrale Forschungsfrage von BA2: ob identische Eingaben auf unterschiedlichen Laufzeitumgebungen tatsächlich identische Keystreams erzeugen.
+- Damit kann systematisch geprüft werden, ob Floating-Point- oder Plattformunterschiede die behauptete Deterministik des Systems beeinträchtigen.
+- Die Ergebnisse lassen sich direkt als Nachweis in die BA2-Diskussion zu Reproduzierbarkeit, Robustheit und Grenzen des Prototyps übernehmen.

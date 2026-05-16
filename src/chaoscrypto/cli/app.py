@@ -38,6 +38,14 @@ from chaoscrypto.analysis.runner import (
     write_csv as write_analyze_csv,
     write_json_output as write_analyze_json,
 )
+from chaoscrypto.analysis.platform_divergence import (
+    compare_platform_files,
+    run_platform_check,
+    write_platform_check_csv,
+    write_platform_check_json,
+    write_platform_compare_csv,
+    write_platform_compare_json,
+)
 from chaoscrypto.report.runner import generate_report
 from chaoscrypto.core.seed.base import list_seed_strategies
 from chaoscrypto.orchestrator.pipeline import (
@@ -94,6 +102,40 @@ def parse_coord(coord: str) -> Tuple[int, int]:
         return int(x_str.strip()), int(y_str.strip())
     except Exception as exc:  # noqa: BLE001
         raise typer.BadParameter("coord must be provided as 'x,y' or 'x y'") from exc
+
+
+def _resolve_analyze_profile_config(cfg: AnalyzeFullConfig) -> tuple[AnalyzeFullConfig, MemoryParams, str]:
+    if not profile_exists(cfg.analyze.profile):
+        typer.secho(f"Profile '{cfg.analyze.profile}' not found. Run init first.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    profile_meta = load_profile_meta(cfg.analyze.profile)
+    profile_params = memory_params_from_meta(profile_meta)
+    token_fp = token_fingerprint(cfg.analyze.token.encode(constants.ENCODING))
+    if any(val != profile_params.size for val in cfg.matrix.size):
+        typer.secho("Matrix size values must match the profile size.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if any(val != profile_params.scale for val in cfg.matrix.scale):
+        typer.secho("Matrix scale values must match the profile scale.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if not cfg.matrix.provided_memory_type:
+        cfg = AnalyzeFullConfig(
+            analyze=cfg.analyze,
+            matrix=AnalyzeMatrixConfig(
+                dt=cfg.matrix.dt,
+                warmup=cfg.matrix.warmup,
+                quant_k=cfg.matrix.quant_k,
+                size=cfg.matrix.size,
+                scale=cfg.matrix.scale,
+                seed_strategy=cfg.matrix.seed_strategy,
+                memory_type=[profile_params.type],
+                provided_memory_type=False,
+            ),
+            metrics=cfg.metrics,
+            output=cfg.output,
+            validate=cfg.validate,
+        )
+    return cfg, profile_params, token_fp
 
 
 @app.command()
@@ -795,35 +837,7 @@ def analyze(
         typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    if not profile_exists(cfg.analyze.profile):
-        typer.secho(f"Profile '{cfg.analyze.profile}' not found. Run init first.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-    profile_meta = load_profile_meta(cfg.analyze.profile)
-    profile_params = memory_params_from_meta(profile_meta)
-    token_fp = token_fingerprint(cfg.analyze.token.encode(constants.ENCODING))
-    if any(val != profile_params.size for val in cfg.matrix.size):
-        typer.secho("Matrix size values must match the profile size.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-    if any(val != profile_params.scale for val in cfg.matrix.scale):
-        typer.secho("Matrix scale values must match the profile scale.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-    if not cfg.matrix.provided_memory_type:
-        cfg = AnalyzeFullConfig(
-            analyze=cfg.analyze,
-            matrix=AnalyzeMatrixConfig(
-                dt=cfg.matrix.dt,
-                warmup=cfg.matrix.warmup,
-                quant_k=cfg.matrix.quant_k,
-                size=cfg.matrix.size,
-                scale=cfg.matrix.scale,
-                seed_strategy=cfg.matrix.seed_strategy,
-                memory_type=[profile_params.type],
-                provided_memory_type=False,
-            ),
-            metrics=cfg.metrics,
-            output=cfg.output,
-            validate=cfg.validate,
-        )
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
 
     variant_count = (
         len(cfg.analyze.coords)
@@ -910,6 +924,174 @@ def analyze(
             "json": str(out_json) if out_json else None,
             "variants": len(records),
         }
+        typer.echo(json.dumps(summary))
+
+
+@app.command("platform-check")
+def platform_check(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out: Path = typer.Option(..., "--out", "-o", help="CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    runtime_label: str | None = typer.Option(None, "--runtime-label", help="Optional label for this runtime, e.g. windows-native or wsl"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Export deterministic keystream hashes and runtime metadata for cross-platform comparison.
+    """
+    set_command_context("platform-check")
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
+    variant_count = (
+        len(cfg.analyze.coords)
+        * len(cfg.matrix.dt)
+        * len(cfg.matrix.warmup)
+        * len(cfg.matrix.quant_k)
+        * len(cfg.matrix.size)
+        * len(cfg.matrix.scale)
+        * len(cfg.matrix.seed_strategy)
+        * len(cfg.matrix.memory_type)
+    )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "platform-check",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
+    logger.info(
+        "Loaded platform-check config=%s profile=%s variants=%d runtime_label=%s",
+        config,
+        cfg.analyze.profile,
+        variant_count,
+        runtime_label or "",
+    )
+
+    try:
+        records = run_platform_check(cfg, jobs=jobs, runtime_label=runtime_label)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Platform check failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "platform-check",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} runtime={runtime_label} ks_sha256={keystream_sha256}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
+    try:
+        write_platform_check_csv(out, records)
+        if out_json:
+            write_platform_check_json(out_json, records)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"Platform check complete. CSV → {out}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("platform check complete")
+
+    if json_summary:
+        import json
+
+        summary = {
+            "variants": len(records),
+            "csv": str(out),
+            "json": str(out_json) if out_json else None,
+            "runtime_label": runtime_label,
+        }
+        typer.echo(json.dumps(summary))
+
+
+@app.command("platform-compare")
+def platform_compare(
+    reference: Path = typer.Option(..., "--reference", exists=True, readable=True, help="Reference platform-check CSV/JSON"),
+    candidate: Path = typer.Option(..., "--candidate", exists=True, readable=True, help="Candidate platform-check CSV/JSON"),
+    out: Path = typer.Option(..., "--out", "-o", help="Comparison CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional comparison JSON output path"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Compare two platform-check exports and log deterministic divergences per variant.
+    """
+    set_command_context("platform-compare")
+    print_run_header(
+        "platform-compare",
+        profile_name=None,
+        profile_dir_path=None,
+        profile_files=None,
+        memory_params=None,
+        token_fingerprint=None,
+    )
+    print_io_read(reference)
+    print_io_read(candidate)
+
+    try:
+        records, summary = compare_platform_files(reference, candidate)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Platform compare failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "platform-compare",
+        [
+            (
+                "status={status} coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} "
+                "seed_strategy={seed_strategy} memory_type={memory_type}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
+    try:
+        write_platform_compare_csv(out, records)
+        if out_json:
+            write_platform_compare_json(out_json, records, summary)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(
+        f"Platform compare complete. matches={summary['matches']} diverged={summary['diverged']} "
+        f"missing_reference={summary['missing_reference']} missing_candidate={summary['missing_candidate']}",
+        fg=typer.colors.GREEN,
+    )
+    print_done("platform compare complete")
+
+    if json_summary:
+        import json
+
         typer.echo(json.dumps(summary))
 
 
