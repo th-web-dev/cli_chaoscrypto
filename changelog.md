@@ -9,6 +9,25 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 5.1: Integritäts-Messreihe (HMAC) im Benchmark
+
+Technisch:
+- Der Benchmark wurde um einen optionalen Integritätsschritt erweitert (`metrics.compare_hmac_sha256`).
+- Bei Aktivierung wird über dem erzeugten Ciphertext ein HMAC-SHA256 berechnet und separat gemessen.
+- Neue Exportfelder in `results.csv`:
+- `t_hmac_s`
+- `throughput_hmac_bps`
+- `throughput_ratio_xor_to_hmac`
+- `hmac_sha256`
+- Die HMAC-Schlüsselableitung ist deterministisch aus Token und Koordinate, damit Vergleichsläufe reproduzierbar bleiben.
+- BA2-Beispielkonfiguration `examples/ba2_benchmark.yaml` wurde erweitert (HMAC + AES-Vergleich aktiviert).
+- Testabdeckung ergänzt:
+- `tests/test_benchmark.py` prüft die neuen Felder im deaktivierten Standardfall und mit aktivierter HMAC-Messung.
+
+BA-Relevanz:
+- Damit ist der Overhead von "Vertraulichkeit + Integrität" gegenüber reinem XOR/Keystream messbar.
+- Die BA2-Security-Bewertung kann nun nicht nur Zufälligkeit/Sensitivität, sondern auch Basis-Integrität und deren Performancekosten quantitativ diskutieren.
+
 ### Task 2.3: Performance-Vergleich gegen AES-256-CTR
 
 Technisch:

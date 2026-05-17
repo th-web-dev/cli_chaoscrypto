@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import hmac
 import itertools
 import os
 import time
@@ -71,6 +72,7 @@ class MetricsConfig:
     include_xor_time: bool
     include_decrypt_time: bool
     compare_aes256ctr: bool
+    compare_hmac_sha256: bool
     keystream_hash: str  # only sha256 supported
 
 
@@ -172,6 +174,7 @@ def parse_config(path: Path) -> FullConfig:
         include_xor_time=bool(metrics.get("include_xor_time", True)),
         include_decrypt_time=bool(metrics.get("include_decrypt_time", False)),
         compare_aes256ctr=bool(metrics.get("compare_aes256ctr", False)),
+        compare_hmac_sha256=bool(metrics.get("compare_hmac_sha256", False)),
         keystream_hash=str(metrics.get("keystream_hash", "sha256")),
     )
     if metrics_cfg.keystream_hash.lower() != "sha256":
@@ -223,6 +226,11 @@ def _derive_aes_key_nonce(token_bytes: bytes, coord: Tuple[int, int]) -> tuple[b
     return key, nonce
 
 
+def _derive_hmac_key(token_bytes: bytes, coord: Tuple[int, int]) -> bytes:
+    material = token_bytes + b":hmac:" + f"{coord[0]},{coord[1]}".encode(constants.ENCODING)
+    return hashlib.sha256(material).digest()
+
+
 def _aes256ctr_encrypt(plaintext: bytes, key: bytes, nonce: bytes) -> bytes:
     if Cipher is None or algorithms is None or modes is None:
         raise RuntimeError("cryptography package not available")
@@ -255,6 +263,7 @@ def _keystream_and_metrics(
     include_xor_time: bool,
     include_decrypt_time: bool,
     compare_aes256ctr: bool,
+    compare_hmac_sha256: bool,
     field_regen_each: bool,
     assert_deterministic: bool,
     include_field_fp: bool,
@@ -323,6 +332,28 @@ def _keystream_and_metrics(
     else:
         result["t_decrypt_s"] = None
 
+    result["throughput_keystream_bps"] = nbytes / t_keystream if t_keystream else None
+    if include_xor_time and result["t_xor_s"]:
+        result["throughput_xor_bps"] = nbytes / result["t_xor_s"]
+    else:
+        result["throughput_xor_bps"] = None
+
+    if compare_hmac_sha256:
+        hmac_key = _derive_hmac_key(token_bytes, coord)
+        tag, t_hmac = _measure_time(lambda: hmac.new(hmac_key, ciphertext, hashlib.sha256).digest())
+        result["hmac_sha256"] = tag.hex()
+        result["t_hmac_s"] = t_hmac
+        result["throughput_hmac_bps"] = nbytes / t_hmac if t_hmac else None
+        if result["throughput_xor_bps"] and result["throughput_hmac_bps"]:
+            result["throughput_ratio_xor_to_hmac"] = result["throughput_xor_bps"] / result["throughput_hmac_bps"]
+        else:
+            result["throughput_ratio_xor_to_hmac"] = None
+    else:
+        result["hmac_sha256"] = None
+        result["t_hmac_s"] = None
+        result["throughput_hmac_bps"] = None
+        result["throughput_ratio_xor_to_hmac"] = None
+
     if compare_aes256ctr:
         aes_key, aes_nonce = _derive_aes_key_nonce(token_bytes, coord)
         _, t_aes = _measure_time(lambda: _aes256ctr_encrypt(plaintext, aes_key, aes_nonce))
@@ -353,12 +384,6 @@ def _keystream_and_metrics(
         result["keystream_preview_base64"] = base64.b64encode(ks[:preview_len]).decode("ascii")
     else:
         result["keystream_preview_base64"] = None
-
-    result["throughput_keystream_bps"] = nbytes / t_keystream if t_keystream else None
-    if include_xor_time and result["t_xor_s"]:
-        result["throughput_xor_bps"] = nbytes / result["t_xor_s"]
-    else:
-        result["throughput_xor_bps"] = None
 
     return result
 
@@ -429,6 +454,7 @@ def _run_single_variant(
         include_xor_time=metrics.include_xor_time,
         include_decrypt_time=metrics.include_decrypt_time,
         compare_aes256ctr=metrics.compare_aes256ctr,
+        compare_hmac_sha256=metrics.compare_hmac_sha256,
         field_regen_each=bench.field_regen_each_repeat,
         assert_deterministic=validate.assert_deterministic_within_run,
         include_field_fp=output.include_field_fingerprint,
@@ -461,11 +487,15 @@ def _run_single_variant(
         "t_keystream_s": ks_metrics["t_keystream_s"],
         "t_xor_s": ks_metrics["t_xor_s"],
         "t_decrypt_s": ks_metrics["t_decrypt_s"],
+        "t_hmac_s": ks_metrics["t_hmac_s"],
         "t_aes256ctr_s": ks_metrics["t_aes256ctr_s"],
         "throughput_keystream_bps": ks_metrics["throughput_keystream_bps"],
         "throughput_xor_bps": ks_metrics["throughput_xor_bps"],
+        "throughput_hmac_bps": ks_metrics["throughput_hmac_bps"],
+        "throughput_ratio_xor_to_hmac": ks_metrics["throughput_ratio_xor_to_hmac"],
         "throughput_aes256ctr_bps": ks_metrics["throughput_aes256ctr_bps"],
         "throughput_ratio_chaos_to_aes256ctr": ks_metrics["throughput_ratio_chaos_to_aes256ctr"],
+        "hmac_sha256": ks_metrics["hmac_sha256"],
         "keystream_preview_base64": ks_metrics["keystream_preview_base64"],
     }
     if output.include_timestamp_utc:
@@ -545,12 +575,16 @@ CSV_FIELDS = [
     "t_keystream_s",
     "t_xor_s",
     "t_decrypt_s",
+    "t_hmac_s",
     "t_aes256ctr_s",
     "throughput_keystream_bps",
     "throughput_xor_bps",
+    "throughput_hmac_bps",
+    "throughput_ratio_xor_to_hmac",
     "throughput_aes256ctr_bps",
     "throughput_ratio_chaos_to_aes256ctr",
     "keystream_sha256",
+    "hmac_sha256",
     "field_fingerprint",
     "token_fingerprint",
     "keystream_preview_base64",

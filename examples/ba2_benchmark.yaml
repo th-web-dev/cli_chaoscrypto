@@ -19,6 +19,7 @@ metrics:
   include_field_time: true
   include_xor_time: true
   include_decrypt_time: false
+  compare_hmac_sha256: true
   compare_aes256ctr: true
   keystream_hash: "sha256"
 

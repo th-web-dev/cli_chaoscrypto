@@ -20,6 +20,7 @@ metrics:
   include_field_time: true                # Erfasst die Zeit zur Generierung des Memory-Feldes
   include_xor_time: true                  # Erfasst die Zeit für die XOR-Verknüpfung von Klartext und Schlüsselstrom
   include_decrypt_time: false             # Entschlüsselungszeit wird nicht separat gemessen
+  compare_hmac_sha256: false              # Optionaler Integritäts-Overhead via HMAC-SHA256
   compare_aes256ctr: false                # Optionaler Vergleich mit AES-256-CTR (Durchsatz-Baseline)
   keystream_hash: sha256                  # Kryptographischer Hash des Schlüsselstroms zur Vergleichbarkeit
 

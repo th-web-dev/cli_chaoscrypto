@@ -104,6 +104,10 @@ def test_benchmark_smoke(tmp_path, monkeypatch):
     assert first["t_aes256ctr_s"] == ""
     assert first["throughput_aes256ctr_bps"] == ""
     assert first["throughput_ratio_chaos_to_aes256ctr"] == ""
+    assert first["t_hmac_s"] == ""
+    assert first["throughput_hmac_bps"] == ""
+    assert first["throughput_ratio_xor_to_hmac"] == ""
+    assert first["hmac_sha256"] == ""
 
     data = json.loads(json_out.read_text())
     assert len(data) == 8
@@ -284,6 +288,7 @@ def test_benchmark_with_aes256ctr_compare(tmp_path, monkeypatch):
             "include_xor_time": False,
             "include_decrypt_time": False,
             "compare_aes256ctr": True,
+            "compare_hmac_sha256": False,
             "keystream_hash": "sha256",
         },
         "output": {
@@ -306,3 +311,64 @@ def test_benchmark_with_aes256ctr_compare(tmp_path, monkeypatch):
     assert float(row["t_aes256ctr_s"]) > 0
     assert row["throughput_aes256ctr_bps"] != ""
     assert float(row["throughput_aes256ctr_bps"]) > 0
+
+
+def test_benchmark_with_hmac_compare(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--profile",
+            "alice",
+            "--token",
+            "secret",
+            "--size",
+            "128",
+            "--scale",
+            "0.1",
+        ],
+    )
+
+    cfg = {
+        "bench": {
+            "profile": "alice",
+            "token": "secret",
+            "coord": [1, 2],
+            "nbytes": 4096,
+            "repeats": 1,
+            "field_regen_each_repeat": True,
+        },
+        "matrix": {"dt": [0.01], "warmup": [100], "quant_k": [100000.0], "size": [128], "scale": [0.1], "seed_strategy": ["neighborhood3"]},
+        "metrics": {
+            "include_field_time": False,
+            "include_xor_time": True,
+            "include_decrypt_time": False,
+            "compare_aes256ctr": False,
+            "compare_hmac_sha256": True,
+            "keystream_hash": "sha256",
+        },
+        "output": {
+            "include_timestamp_utc": False,
+            "include_field_fingerprint": True,
+            "include_keystream_preview": False,
+            "keystream_preview_bytes": 8,
+        },
+        "validate": {"assert_deterministic_within_run": True, "extra_determinism_check": False},
+    }
+    cfg_path = Path(tmp_path) / "bench_hmac.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    csv_out = Path(tmp_path) / "out.csv"
+    res = runner.invoke(app, ["benchmark", "--config", str(cfg_path), "--out", str(csv_out)])
+    assert res.exit_code == 0, res.output
+    with csv_out.open() as f:
+        rows = list(csv.DictReader(f))
+    row = rows[0]
+    assert row["hmac_sha256"] != ""
+    assert len(row["hmac_sha256"]) == 64
+    assert row["t_hmac_s"] != ""
+    assert float(row["t_hmac_s"]) > 0
+    assert row["throughput_hmac_bps"] != ""
+    assert float(row["throughput_hmac_bps"]) > 0
