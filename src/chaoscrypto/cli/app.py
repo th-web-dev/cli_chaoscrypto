@@ -1129,6 +1129,7 @@ def ba2_eval(
     nist_summary_csv: Path = typer.Option(..., "--nist-summary-csv", exists=True, readable=True, help="NIST test summary CSV"),
     avalanche_csv: Path = typer.Option(..., "--avalanche-csv", exists=True, readable=True, help="Avalanche CSV"),
     periodicity_csv: Path = typer.Option(..., "--periodicity-csv", exists=True, readable=True, help="Periodicity CSV"),
+    reconstruction_csv: Path | None = typer.Option(None, "--reconstruction-csv", exists=True, readable=True, help="Optional reconstruction CSV"),
     out_md: Path = typer.Option(..., "--out-md", help="BA2 markdown summary path"),
     out_csv: Path = typer.Option(..., "--out-csv", help="BA2 overview CSV path"),
     out_json: Path | None = typer.Option(None, "--out-json", help="Optional BA2 JSON summary path"),
@@ -1144,6 +1145,8 @@ def ba2_eval(
     print_io_read(nist_summary_csv)
     print_io_read(avalanche_csv)
     print_io_read(periodicity_csv)
+    if reconstruction_csv:
+        print_io_read(reconstruction_csv)
     usability_summary = None
     if usability_csv:
         print_io_read(usability_csv)
@@ -1157,6 +1160,7 @@ def ba2_eval(
             nist_summary_csv=nist_summary_csv,
             avalanche_csv=avalanche_csv,
             periodicity_csv=periodicity_csv,
+            reconstruction_csv=reconstruction_csv,
             usability_summary=usability_summary,
         )
     except Exception as exc:  # noqa: BLE001
@@ -1173,6 +1177,8 @@ def ba2_eval(
                     "nist": payload["nist"],
                     "avalanche": payload["avalanche"],
                     "periodicity": payload["periodicity"],
+                    "reconstruction": payload.get("reconstruction"),
+                    "usability": payload.get("usability"),
                     "overview_rows": payload["overview_rows"],
                 },
             )
@@ -1197,6 +1203,7 @@ def ba2_eval(
             "nist_variants": payload["nist"].get("variants_total"),
             "avalanche_rows_evaluated": payload["avalanche"].get("rows_evaluated"),
             "periodicity_variants": payload["periodicity"].get("variants_total"),
+            "reconstruction_variants": (payload.get("reconstruction") or {}).get("variants_total"),
             "usability_runs_total": (payload.get("usability") or {}).get("runs_total"),
             "out_md": str(out_md),
             "out_csv": str(out_csv),

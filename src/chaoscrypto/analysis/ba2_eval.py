@@ -144,7 +144,35 @@ def _summarize_periodicity(rows: List[Dict[str, str]]) -> Dict[str, Any]:
     }
 
 
-def _build_overview_rows(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicity: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _summarize_reconstruction(rows: List[Dict[str, str]]) -> Dict[str, Any]:
+    if not rows:
+        return {"variants_total": 0}
+    r2_vals = [_to_float(r.get("recon_r2")) for r in rows]
+    r2_vals = [x for x in r2_vals if x is not None]
+    rmse_vals = [_to_float(r.get("recon_rmse")) for r in rows]
+    rmse_vals = [x for x in rmse_vals if x is not None]
+    by_engine: Dict[str, List[float]] = {}
+    for row in rows:
+        r2 = _to_float(row.get("recon_r2"))
+        if r2 is None:
+            continue
+        by_engine.setdefault(str(row.get("chaos_engine") or "unknown"), []).append(r2)
+    engine_mean_r2 = {k: mean(v) for k, v in by_engine.items() if v}
+    return {
+        "variants_total": len(rows),
+        "mean_recon_r2": mean(r2_vals) if r2_vals else None,
+        "mean_recon_rmse": mean(rmse_vals) if rmse_vals else None,
+        "max_recon_r2": max(r2_vals) if r2_vals else None,
+        "engine_mean_recon_r2": engine_mean_r2,
+    }
+
+
+def _build_overview_rows(
+    nist: Dict[str, Any],
+    avalanche: Dict[str, Any],
+    periodicity: Dict[str, Any],
+    reconstruction: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
     rows = [
         {"domain": "nist", "metric": "variants_total", "value": nist.get("variants_total")},
         {"domain": "nist", "metric": "variants_with_any_fail", "value": nist.get("variants_with_any_fail")},
@@ -159,10 +187,24 @@ def _build_overview_rows(nist: Dict[str, Any], avalanche: Dict[str, Any], period
         {"domain": "periodicity", "metric": "mean_lag_match_ratio", "value": periodicity.get("mean_lag_match_ratio")},
         {"domain": "periodicity", "metric": "detected_prefix_period_variants", "value": periodicity.get("detected_prefix_period_variants")},
     ]
+    if reconstruction is not None:
+        rows.extend(
+            [
+                {"domain": "reconstruction", "metric": "variants_total", "value": reconstruction.get("variants_total")},
+                {"domain": "reconstruction", "metric": "mean_recon_r2", "value": reconstruction.get("mean_recon_r2")},
+                {"domain": "reconstruction", "metric": "mean_recon_rmse", "value": reconstruction.get("mean_recon_rmse")},
+            ]
+        )
     return rows
 
 
-def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicity: Dict[str, Any], usability: Dict[str, Any] | None = None) -> str:
+def _render_markdown(
+    nist: Dict[str, Any],
+    avalanche: Dict[str, Any],
+    periodicity: Dict[str, Any],
+    usability: Dict[str, Any] | None = None,
+    reconstruction: Dict[str, Any] | None = None,
+) -> str:
     lines: List[str] = []
     lines.append("# BA2 Evaluation Summary")
     lines.append("")
@@ -197,6 +239,17 @@ def _render_markdown(nist: Dict[str, Any], avalanche: Dict[str, Any], periodicit
     lines.append(f"- Mean lag match ratio: {periodicity.get('mean_lag_match_ratio')}")
     lines.append(f"- Max lag match ratio: {periodicity.get('max_lag_match_ratio')}")
     lines.append(f"- Detected prefix period variants: {periodicity.get('detected_prefix_period_variants')}")
+    if reconstruction is not None:
+        lines.append("")
+        lines.append("## Reconstruction")
+        lines.append(f"- Variants total: {reconstruction.get('variants_total')}")
+        lines.append(f"- Mean reconstruction R²: {reconstruction.get('mean_recon_r2')}")
+        lines.append(f"- Mean reconstruction RMSE: {reconstruction.get('mean_recon_rmse')}")
+        engine_means = reconstruction.get("engine_mean_recon_r2", {})
+        if engine_means:
+            lines.append("- Mean R² by chaos engine:")
+            for engine, value in sorted(engine_means.items()):
+                lines.append(f"- {engine}: {value}")
     if usability is not None:
         lines.append("")
         lines.append("## Usability")
@@ -218,6 +271,7 @@ def run_ba2_eval(
     nist_summary_csv: Path,
     avalanche_csv: Path,
     periodicity_csv: Path,
+    reconstruction_csv: Path | None = None,
     usability_summary: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     nist_runs = _read_csv(nist_runs_csv)
@@ -227,7 +281,11 @@ def run_ba2_eval(
     nist = _summarize_nist(nist_runs, nist_summary_rows)
     avalanche = _summarize_avalanche(avalanche_rows)
     periodicity = _summarize_periodicity(periodicity_rows)
-    overview = _build_overview_rows(nist, avalanche, periodicity)
+    reconstruction = None
+    if reconstruction_csv is not None:
+        reconstruction_rows = _read_csv(reconstruction_csv)
+        reconstruction = _summarize_reconstruction(reconstruction_rows)
+    overview = _build_overview_rows(nist, avalanche, periodicity, reconstruction)
     if usability_summary is not None:
         overview.extend(
             [
@@ -237,7 +295,7 @@ def run_ba2_eval(
                 {"domain": "usability", "metric": "repro_match_rate", "value": usability_summary.get("repro_match_rate")},
             ]
         )
-    markdown = _render_markdown(nist, avalanche, periodicity, usability_summary)
+    markdown = _render_markdown(nist, avalanche, periodicity, usability_summary, reconstruction)
     payload: Dict[str, Any] = {
         "nist": nist,
         "avalanche": avalanche,
@@ -245,6 +303,8 @@ def run_ba2_eval(
         "overview_rows": overview,
         "markdown": markdown,
     }
+    if reconstruction is not None:
+        payload["reconstruction"] = reconstruction
     if usability_summary is not None:
         payload["usability"] = usability_summary
     return payload

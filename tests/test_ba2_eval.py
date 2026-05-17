@@ -70,6 +70,15 @@ def test_ba2_eval_generates_outputs(tmp_path):
             {"lag_match_ratio": "0.003", "repeated_chunk_hash_count": "1", "detected_prefix_period_bytes": "64"},
         ],
     )
+    reconstruction = tmp_path / "reconstruction.csv"
+    _write_csv(
+        reconstruction,
+        ["chaos_engine", "recon_r2", "recon_rmse"],
+        [
+            {"chaos_engine": "lorenz", "recon_r2": "0.70", "recon_rmse": "0.20"},
+            {"chaos_engine": "rossler", "recon_r2": "0.50", "recon_rmse": "0.30"},
+        ],
+    )
 
     out_md = tmp_path / "ba2_eval_summary.md"
     out_csv = tmp_path / "ba2_eval_summary.csv"
@@ -96,6 +105,8 @@ def test_ba2_eval_generates_outputs(tmp_path):
             str(avalanche),
             "--periodicity-csv",
             str(periodicity),
+            "--reconstruction-csv",
+            str(reconstruction),
             "--out-md",
             str(out_md),
             "--out-csv",
@@ -112,3 +123,4 @@ def test_ba2_eval_generates_outputs(tmp_path):
     assert out_json.exists()
     assert "BA2 Evaluation Summary" in out_md.read_text(encoding="utf-8")
     assert "## Usability" in out_md.read_text(encoding="utf-8")
+    assert "## Reconstruction" in out_md.read_text(encoding="utf-8")

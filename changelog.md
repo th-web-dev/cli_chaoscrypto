@@ -9,6 +9,27 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 7.1: BA2-Endkonsolidierung um Rekonstruktionsbefunde
+
+Technisch:
+- `ba2-eval` wurde um optionalen Input `--reconstruction-csv` erweitert.
+- Die Konsolidierung (`src/chaoscrypto/analysis/ba2_eval.py`) aggregiert jetzt zusätzlich Rekonstruktionsmetriken:
+- `mean_recon_r2`
+- `mean_recon_rmse`
+- `engine_mean_recon_r2` (Lorenz vs. Rössler)
+- Markdown-Output enthält einen neuen Abschnitt `## Reconstruction`.
+- Overview-CSV/JSON enthält zusätzliche `reconstruction`-Kennzahlen.
+- Testabdeckung in `tests/test_ba2_eval.py` wurde erweitert und prüft den neuen Rekonstruktionsblock.
+
+BA-Relevanz:
+- Damit fließen nun alle zentralen BA2-Sicherheitsbefunde in einen gemeinsamen Abschluss-Readout ein:
+- NIST
+- Avalanche
+- Periodizität
+- Rekonstruktionsversuch
+- plus Usability-KPIs
+- Die Endauswertung ist dadurch vollständig und direkt als Grundlage für Ergebnis- und Diskussionskapitel nutzbar.
+
 ### Task 3.3: Attraktor-Rekonstruktions-Versuch (`attractor-reconstruct`)
 
 Technisch:
