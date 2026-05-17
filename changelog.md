@@ -11,6 +11,18 @@ Jeder Eintrag enthält:
 
 ## 2026-05-17
 
+### Task 3.3b: Rekonstruktionsmetrik methodisch gehärtet (Leakage-Fix + Out-of-Sample)
+
+Technisch:
+- Die Rekonstruktionsauswertung in `src/chaoscrypto/analysis/attractor_reconstruction.py` wurde korrigiert.
+- Der bisherige Zielwert-Leak wurde entfernt: das Modell sagt jetzt `x[t+1]` aus verzögerten Vergangenheitswerten voraus, statt den aktuellen Zielwert implizit im Feature-Set zu enthalten.
+- Die Gütekennzahlen werden nicht mehr in-sample berechnet, sondern auf einem zeitlich späteren Testsegment (chronologischer Holdout, 80/20).
+- Für zu kleine Stichproben wird robust auf `None` zurückgefallen statt instabiler Scheinmetriken.
+
+BA-Relevanz:
+- Die Rekonstruktionskennzahlen sind damit als Sicherheitsindikator belastbarer und nicht durch triviale Selbstvorhersage verzerrt.
+- Der Vergleich Lorenz vs. Rössler im Rekonstruktionsblock basiert nun auf einer echten Out-of-Sample-Vorhersageaufgabe.
+
 ### Task 6.1: Usability-KPIs im Standard-Report integriert
 
 Technisch:

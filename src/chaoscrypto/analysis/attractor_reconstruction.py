@@ -92,30 +92,41 @@ def _reconstruction_metrics(data: bytes, embedding_dim: int, delay_bytes: int, m
     m = embedding_dim
     tau = delay_bytes
     start = (m - 1) * tau
-    target_idx = np.arange(start + 1, series.size)
-    if target_idx.size <= m + 1:
-        return int(target_idx.size), None, None
+    idx = np.arange(start, series.size - 1)
+    if idx.size <= (m + 1):
+        return int(idx.size), None, None
     feature_cols = []
     for i in range(m):
-        feature_cols.append(series[target_idx - i * tau])
+        feature_cols.append(series[idx - i * tau])
     X = np.stack(feature_cols, axis=1)
-    y = series[target_idx]
+    y = series[idx + 1]
     if max_samples > 0 and X.shape[0] > max_samples:
         X = X[:max_samples, :]
         y = y[:max_samples]
-    ones = np.ones((X.shape[0], 1), dtype=np.float64)
-    Xb = np.concatenate([ones, X], axis=1)
-    coeffs, *_ = np.linalg.lstsq(Xb, y, rcond=None)
-    pred = Xb @ coeffs
-    residual = y - pred
+    if X.shape[0] < 20:
+        return int(X.shape[0]), None, None
+    split_idx = max(1, int(X.shape[0] * 0.8))
+    if split_idx >= X.shape[0]:
+        split_idx = X.shape[0] - 1
+    X_train, y_train = X[:split_idx], y[:split_idx]
+    X_test, y_test = X[split_idx:], y[split_idx:]
+    if X_test.shape[0] == 0:
+        return int(X.shape[0]), None, None
+    ones_train = np.ones((X_train.shape[0], 1), dtype=np.float64)
+    Xb_train = np.concatenate([ones_train, X_train], axis=1)
+    coeffs, *_ = np.linalg.lstsq(Xb_train, y_train, rcond=None)
+    ones_test = np.ones((X_test.shape[0], 1), dtype=np.float64)
+    Xb_test = np.concatenate([ones_test, X_test], axis=1)
+    pred = Xb_test @ coeffs
+    residual = y_test - pred
     mse = float(np.mean(residual * residual))
     rmse = float(np.sqrt(mse))
-    denom = float(np.sum((y - np.mean(y)) ** 2))
+    denom = float(np.sum((y_test - np.mean(y_test)) ** 2))
     if denom <= 0:
         r2 = None
     else:
         r2 = float(1.0 - float(np.sum(residual * residual)) / denom)
-    return int(X.shape[0]), r2, rmse
+    return int(X_test.shape[0]), r2, rmse
 
 
 def _run_one(
