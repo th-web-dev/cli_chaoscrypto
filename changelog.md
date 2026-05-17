@@ -9,6 +9,24 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 3.3: Attraktor-Rekonstruktions-Versuch (`attractor-reconstruct`)
+
+Technisch:
+- Neuer Analyse-Workflow `attractor-reconstruct` ergänzt (`src/chaoscrypto/analysis/attractor_reconstruction.py` + CLI in `src/chaoscrypto/cli/app.py`).
+- Pro Variantenlauf wird aus dem Keystream ein Delay-Embedding aufgebaut und eine einfache one-step Vorhersage (lineares Modell via Least Squares) berechnet.
+- Exportierte Rekonstruktionsmetriken:
+- `recon_r2` (Vorhersagegüte)
+- `recon_rmse` (Vorhersagefehler)
+- `sample_count`, `embedding_dim`, `delay_bytes`
+- Workflow ist matrix-kompatibel inkl. `chaos_engine`, damit Lorenz und Rössler direkt vergleichbar sind.
+- Neue BA2-Beispielkonfiguration: `examples/ba2_reconstruction.yaml`.
+- Testabdeckung erweitert: `tests/test_attractor_reconstruction.py` (Smoke + Parameter-Validierung).
+
+BA-Relevanz:
+- Dieser Schritt operationalisiert den Rekonstruktionsversuch aus Keystream-Fragmenten als messbare Statistik (statt rein visueller Einzelplots).
+- Für BA2 kann damit systematisch verglichen werden, ob und wie stark sich die Vorhersagbarkeit zwischen Lorenz und Rössler unterscheidet.
+- Die Metriken unterstützen die Sicherheitsdiskussion zur möglichen Zustands-/Dynamikrekonstruktion empirisch und reproduzierbar.
+
 ### Task 4.1: Rössler-Attraktor als zweite Chaos-Engine
 
 Technisch:

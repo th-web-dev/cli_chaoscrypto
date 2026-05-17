@@ -60,6 +60,11 @@ from chaoscrypto.analysis.periodicity import (
     write_periodicity_csv,
     write_periodicity_json,
 )
+from chaoscrypto.analysis.attractor_reconstruction import (
+    run_attractor_reconstruction,
+    write_reconstruction_csv,
+    write_reconstruction_json,
+)
 from chaoscrypto.analysis.nist_batch import (
     run_nist_batch,
     write_nist_runs_csv,
@@ -1707,6 +1712,127 @@ def periodicity(
             "rows": len(records),
             "variants": variant_count,
             "mean_lag_match_ratio": mean_lag,
+            "csv": str(out),
+            "json": str(out_json) if out_json else None,
+        }
+        typer.echo(json.dumps(summary))
+
+
+@app.command("attractor-reconstruct")
+def attractor_reconstruct(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True, help="YAML analyze config"),
+    out: Path = typer.Option(..., "--out", "-o", help="CSV output path"),
+    out_json: Path | None = typer.Option(None, "--out-json", help="Optional JSON output path"),
+    jobs: int = typer.Option(1, "--jobs", "-j", help="Parallel jobs (variants), default 1"),
+    embedding_dim: int = typer.Option(3, "--embedding-dim", help="Delay embedding dimension"),
+    delay_bytes: int = typer.Option(1, "--delay-bytes", help="Delay (in bytes) used for embedding"),
+    max_samples: int = typer.Option(200000, "--max-samples", help="Maximum samples per variant for regression"),
+    json_summary: bool = typer.Option(False, "--json", help="Print summary JSON to stdout"),
+):
+    """
+    Attempt phase-space reconstruction from keystream bytes via delay embedding and one-step prediction.
+    """
+    set_command_context("attractor-reconstruct")
+    if embedding_dim < 2 or delay_bytes <= 0 or max_samples <= 0:
+        typer.secho("embedding_dim must be >=2 and delay_bytes/max_samples must be >0", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        cfg = parse_analyze_config(config)
+    except AnalyzeConfigError as exc:
+        typer.secho(f"Config error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    cfg, profile_params, token_fp = _resolve_analyze_profile_config(cfg)
+    variant_count = (
+        len(cfg.analyze.coords)
+        * len(cfg.matrix.dt)
+        * len(cfg.matrix.warmup)
+        * len(cfg.matrix.quant_k)
+        * len(cfg.matrix.size)
+        * len(cfg.matrix.scale)
+        * len(cfg.matrix.seed_strategy)
+        * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
+    )
+    seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
+    coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
+    print_run_header(
+        "attractor-reconstruct",
+        profile_name=cfg.analyze.profile,
+        profile_dir_path=profile_dir(cfg.analyze.profile),
+        profile_files=[profile_meta_path(cfg.analyze.profile)],
+        memory_params=profile_params,
+        token_fingerprint=token_fp,
+        seed_strategy=seed_strategy_text,
+        coord=coord_text,
+        dt=f"matrix[{len(cfg.matrix.dt)}]",
+        warmup=f"matrix[{len(cfg.matrix.warmup)}]",
+        quant_k=f"matrix[{len(cfg.matrix.quant_k)}]",
+        nbytes=cfg.analyze.nbytes,
+    )
+    print_io_read(config)
+    token_bytes = cfg.analyze.token.encode(constants.ENCODING)
+    field, _field_fp = build_memory_field(token_bytes, profile_params)
+    preview_coord = cfg.analyze.coords[0] if cfg.analyze.coords else None
+    print_noise_excerpt(field, coord=preview_coord, window=2)
+    logger.info(
+        "Loaded attractor-reconstruct config=%s profile=%s variants=%d embedding_dim=%d delay_bytes=%d max_samples=%d",
+        config,
+        cfg.analyze.profile,
+        variant_count,
+        embedding_dim,
+        delay_bytes,
+        max_samples,
+    )
+
+    try:
+        records = run_attractor_reconstruction(
+            cfg,
+            jobs=jobs,
+            embedding_dim=embedding_dim,
+            delay_bytes=delay_bytes,
+            max_samples=max_samples,
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Attractor reconstruction failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_variant_lines(
+        "attractor-reconstruct",
+        [
+            (
+                "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
+                "memory_type={memory_type} chaos_engine={chaos_engine} recon_r2={recon_r2} recon_rmse={recon_rmse}"
+            ).format(**rec)
+            for rec in records
+        ],
+    )
+
+    try:
+        write_reconstruction_csv(out, records)
+        if out_json:
+            write_reconstruction_json(out_json, records)
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(f"Failed to write outputs: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    print_io_write(out)
+    if out_json:
+        print_io_write(out_json)
+    typer.secho(f"Attractor reconstruction complete. CSV → {out}", fg=typer.colors.GREEN)
+    if out_json:
+        typer.secho(f"JSON → {out_json}", fg=typer.colors.GREEN)
+    print_done("attractor reconstruction complete")
+
+    if json_summary:
+        import json
+
+        r2_vals = [float(rec["recon_r2"]) for rec in records if rec.get("recon_r2") is not None]
+        summary = {
+            "rows": len(records),
+            "variants": variant_count,
+            "mean_recon_r2": (sum(r2_vals) / len(r2_vals)) if r2_vals else None,
             "csv": str(out),
             "json": str(out_json) if out_json else None,
         }
