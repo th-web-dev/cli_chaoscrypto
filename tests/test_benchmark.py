@@ -198,6 +198,18 @@ def test_benchmark_determinism_and_variation(tmp_path, monkeypatch):
         rows3 = list(csv.DictReader(f))
     assert rows1[0]["keystream_sha256"] != rows3[0]["keystream_sha256"]
 
+    # variation chaos_engine -> hash should differ
+    cfg_base["matrix"]["seed_strategy"] = ["neighborhood3"]
+    cfg_base["matrix"]["chaos_engine"] = ["rossler"]
+    cfg_path4 = Path(tmp_path) / "bench4.yaml"
+    cfg_path4.write_text(yaml.safe_dump(cfg_base), encoding="utf-8")
+    csv4 = Path(tmp_path) / "out4.csv"
+    res4 = runner.invoke(app, ["benchmark", "--config", str(cfg_path4), "--out", str(csv4)])
+    assert res4.exit_code == 0, res4.output
+    with csv4.open() as f:
+        rows4 = list(csv.DictReader(f))
+    assert rows1[0]["keystream_sha256"] != rows4[0]["keystream_sha256"]
+
 
 def test_benchmark_parallel_jobs(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))

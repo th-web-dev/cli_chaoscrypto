@@ -5,13 +5,18 @@ from typing import Tuple
 import numpy as np
 
 from chaoscrypto.core.chaos.lorenz import LorenzSystem
+from chaoscrypto.core.chaos.rossler import RosslerSystem
 from chaoscrypto.core.constants import (
+    CHAOS_ENGINE,
     DEFAULT_DT,
     DEFAULT_QUANT_K,
     DEFAULT_WARMUP,
     LCL_BETA,
     LCL_RHO,
     LCL_SIGMA,
+    RSL_A,
+    RSL_B,
+    RSL_C,
     SEED_STRATEGY,
 )
 from chaoscrypto.core.crypto.xor import xor_bytes
@@ -24,6 +29,12 @@ from chaoscrypto.core.seed import strategies  # noqa: F401 (registers strategies
 from chaoscrypto.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+_CHAOS_ENGINES = ("lorenz", "rossler")
+
+
+def list_chaos_engines() -> tuple[str, ...]:
+    return _CHAOS_ENGINES
 
 
 def build_memory_field(
@@ -51,17 +62,38 @@ def generate_keystream(
     dt: float = DEFAULT_DT,
     warmup: int = DEFAULT_WARMUP,
     quant_k: float = DEFAULT_QUANT_K,
+    chaos_engine: str = CHAOS_ENGINE,
 ) -> bytes:
-    logger.debug("Generating keystream nbytes=%d dt=%s warmup=%d quant_k=%s", num_bytes, dt, warmup, quant_k)
-    system = LorenzSystem(
-        x=init_state[0],
-        y=init_state[1],
-        z=init_state[2],
-        dt=dt,
-        sigma=LCL_SIGMA,
-        rho=LCL_RHO,
-        beta=LCL_BETA,
+    logger.debug(
+        "Generating keystream nbytes=%d dt=%s warmup=%d quant_k=%s chaos_engine=%s",
+        num_bytes,
+        dt,
+        warmup,
+        quant_k,
+        chaos_engine,
     )
+    if chaos_engine == "lorenz":
+        system = LorenzSystem(
+            x=init_state[0],
+            y=init_state[1],
+            z=init_state[2],
+            dt=dt,
+            sigma=LCL_SIGMA,
+            rho=LCL_RHO,
+            beta=LCL_BETA,
+        )
+    elif chaos_engine == "rossler":
+        system = RosslerSystem(
+            x=init_state[0],
+            y=init_state[1],
+            z=init_state[2],
+            dt=dt,
+            a=RSL_A,
+            b=RSL_B,
+            c=RSL_C,
+        )
+    else:
+        raise ValueError(f"Unknown chaos_engine '{chaos_engine}'. Options: {list_chaos_engines()}")
     sampler = QuantizeByteSampling(k=quant_k)
 
     for _ in range(warmup):
@@ -83,10 +115,18 @@ def encrypt_bytes(
     dt: float = DEFAULT_DT,
     warmup: int = DEFAULT_WARMUP,
     quant_k: float = DEFAULT_QUANT_K,
+    chaos_engine: str = CHAOS_ENGINE,
 ) -> tuple[bytes, str]:
     field, field_fp = build_memory_field(token_bytes, params)
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-    keystream = generate_keystream(len(plaintext), init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    keystream = generate_keystream(
+        len(plaintext),
+        init_state,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        chaos_engine=chaos_engine,
+    )
     ciphertext = xor_bytes(plaintext, keystream)
     return ciphertext, field_fp
 
@@ -101,10 +141,18 @@ def decrypt_bytes(
     dt: float = DEFAULT_DT,
     warmup: int = DEFAULT_WARMUP,
     quant_k: float = DEFAULT_QUANT_K,
+    chaos_engine: str = CHAOS_ENGINE,
 ) -> bytes:
     field, field_fp = build_memory_field(token_bytes, params)
     if expected_fingerprint and field_fp != expected_fingerprint:
         raise ValueError("Field fingerprint mismatch – token or parameters differ.")
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-    keystream = generate_keystream(len(ciphertext), init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    keystream = generate_keystream(
+        len(ciphertext),
+        init_state,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        chaos_engine=chaos_engine,
+    )
     return xor_bytes(ciphertext, keystream)

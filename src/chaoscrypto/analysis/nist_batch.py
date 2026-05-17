@@ -31,6 +31,7 @@ RUN_FIELDS: List[str] = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "token_fingerprint",
     "keystream_sha256",
     "nist_alpha",
@@ -77,18 +78,20 @@ def _variant_product(cfg: FullConfig) -> List[Dict[str, Any]]:
                         for scale in cfg.matrix.scale:
                             for seed_strategy in cfg.matrix.seed_strategy:
                                 for memory_type in cfg.matrix.memory_type:
-                                    variants.append(
-                                        {
-                                            "coord": coord,
-                                            "dt": float(dt),
-                                            "warmup": int(warmup),
-                                            "quant_k": float(quant_k),
-                                            "size": int(size),
-                                            "scale": float(scale),
-                                            "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
-                                            "memory_type": str(memory_type or constants.MEMORY_TYPE),
-                                        }
-                                    )
+                                    for chaos_engine in cfg.matrix.chaos_engine:
+                                        variants.append(
+                                            {
+                                                "coord": coord,
+                                                "dt": float(dt),
+                                                "warmup": int(warmup),
+                                                "quant_k": float(quant_k),
+                                                "size": int(size),
+                                                "scale": float(scale),
+                                                "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
+                                                "memory_type": str(memory_type or constants.MEMORY_TYPE),
+                                                "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
+                                            }
+                                        )
     return variants
 
 
@@ -103,6 +106,7 @@ def _generate_keystream(
     scale: float,
     seed_strategy: str,
     memory_type: str,
+    chaos_engine: str,
 ) -> bytes:
     params = MemoryParams(type=memory_type, size=size, scale=scale)
     cache_key = (token_bytes, params.type, params.size, params.scale)
@@ -112,7 +116,7 @@ def _generate_keystream(
         _FIELD_CACHE[cache_key] = cached
     field, _field_fp = cached
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-    return generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    return generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k, chaos_engine=chaos_engine)
 
 
 def _run_one(cfg: FullConfig, variant: Dict[str, Any], token_bytes: bytes, token_fp: str) -> Dict[str, Any]:
@@ -127,6 +131,7 @@ def _run_one(cfg: FullConfig, variant: Dict[str, Any], token_bytes: bytes, token
         scale=variant["scale"],
         seed_strategy=variant["seed_strategy"],
         memory_type=variant["memory_type"],
+        chaos_engine=variant["chaos_engine"],
     )
     if cfg.validate.assert_deterministic_within_run:
         ks2 = _generate_keystream(
@@ -140,6 +145,7 @@ def _run_one(cfg: FullConfig, variant: Dict[str, Any], token_bytes: bytes, token
             scale=variant["scale"],
             seed_strategy=variant["seed_strategy"],
             memory_type=variant["memory_type"],
+            chaos_engine=variant["chaos_engine"],
         )
         if ks2 != ks:
             raise RuntimeError("Determinism check failed for nist-batch run.")
@@ -159,6 +165,7 @@ def _run_one(cfg: FullConfig, variant: Dict[str, Any], token_bytes: bytes, token
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
         "memory_type": variant["memory_type"],
+        "chaos_engine": variant["chaos_engine"],
         "token_fingerprint": token_fp,
         "keystream_sha256": hashlib.sha256(ks).hexdigest(),
         **flat,
@@ -201,6 +208,7 @@ def run_nist_batch(cfg: FullConfig, jobs: int = 1) -> tuple[List[Dict[str, Any]]
             rec["scale"],
             rec["seed_strategy"],
             rec["memory_type"],
+            rec["chaos_engine"],
         ),
     )
     summary_rows = _aggregate_by_test(run_rows, alpha=cfg.metrics.nist_alpha)

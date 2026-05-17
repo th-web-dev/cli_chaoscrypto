@@ -45,6 +45,7 @@ PLATFORM_CHECK_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "token_fingerprint",
     "field_fingerprint",
     "keystream_sha256",
@@ -66,6 +67,7 @@ PLATFORM_COMPARE_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "reference_runtime_label",
     "reference_platform_system",
     "reference_platform_release",
@@ -96,6 +98,7 @@ _VARIANT_KEY_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
 ]
 
 
@@ -109,18 +112,20 @@ def _variant_product(config: FullConfig) -> List[Dict[str, Any]]:
                         for scale in config.matrix.scale:
                             for seed_strategy in config.matrix.seed_strategy:
                                 for memory_type in config.matrix.memory_type:
-                                    combos.append(
-                                        {
-                                            "coord": coord,
-                                            "dt": float(dt),
-                                            "warmup": int(warmup),
-                                            "quant_k": float(quant_k),
-                                            "size": int(size),
-                                            "scale": float(scale),
-                                            "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
-                                            "memory_type": str(memory_type or constants.MEMORY_TYPE),
-                                        }
-                                    )
+                                    for chaos_engine in config.matrix.chaos_engine:
+                                        combos.append(
+                                            {
+                                                "coord": coord,
+                                                "dt": float(dt),
+                                                "warmup": int(warmup),
+                                                "quant_k": float(quant_k),
+                                                "size": int(size),
+                                                "scale": float(scale),
+                                                "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
+                                                "memory_type": str(memory_type or constants.MEMORY_TYPE),
+                                                "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
+                                            }
+                                        )
     return combos
 
 
@@ -164,6 +169,7 @@ def _platform_check_one(
         dt=variant["dt"],
         warmup=variant["warmup"],
         quant_k=variant["quant_k"],
+        chaos_engine=variant["chaos_engine"],
     )
 
     if config.validate.assert_deterministic_within_run:
@@ -174,6 +180,7 @@ def _platform_check_one(
             dt=variant["dt"],
             warmup=variant["warmup"],
             quant_k=variant["quant_k"],
+            chaos_engine=variant["chaos_engine"],
         )
         if ks_2 != ks:
             raise RuntimeError("Determinism check failed during platform check.")
@@ -191,6 +198,7 @@ def _platform_check_one(
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
         "memory_type": variant["memory_type"],
+        "chaos_engine": variant["chaos_engine"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp,
         "keystream_sha256": hashlib.sha256(ks).hexdigest(),
@@ -235,6 +243,7 @@ def run_platform_check(config: FullConfig, jobs: int = 1, runtime_label: str | N
             rec["scale"],
             rec["seed_strategy"],
             rec["memory_type"],
+            rec["chaos_engine"],
         ),
     )
 

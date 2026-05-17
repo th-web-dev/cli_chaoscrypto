@@ -58,6 +58,7 @@ class MatrixConfig:
     scale: Sequence[float]
     seed_strategy: Sequence[str]
     memory_type: Sequence[str]
+    chaos_engine: Sequence[str]
     provided_memory_type: bool
 
 
@@ -156,6 +157,7 @@ def parse_config(path: Path) -> FullConfig:
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
         seed_strategy=[str(x) for x in seed_val],
         memory_type=[str(x) for x in mem_val],
+        chaos_engine=[str(x) for x in matrix.get("chaos_engine", [constants.CHAOS_ENGINE])],
         provided_memory_type=mem_provided,
     )
 
@@ -203,6 +205,9 @@ def parse_config(path: Path) -> FullConfig:
     for name in matrix_cfg.memory_type:
         if name not in list_memory_models():
             raise ConfigError(f"Unknown memory_type '{name}'. Available: {list_memory_models()}")
+    for name in matrix_cfg.chaos_engine:
+        if name not in ("lorenz", "rossler"):
+            raise ConfigError("Unknown chaos_engine '%s'. Available: ['lorenz', 'rossler']" % name)
 
     return FullConfig(
         analyze=analyze_cfg,
@@ -216,8 +221,8 @@ def parse_config(path: Path) -> FullConfig:
 def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> List[Dict[str, Any]]:
     combos = []
     for coord in coords:
-        for dt, warmup, quant_k, size, scale, seed_strategy, memory_type in itertools.product(
-            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type
+        for dt, warmup, quant_k, size, scale, seed_strategy, memory_type, chaos_engine in itertools.product(
+            matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type, matrix.chaos_engine
         ):
             seed_strategy = seed_strategy or constants.SEED_STRATEGY
             memory_type = memory_type or constants.MEMORY_TYPE
@@ -231,6 +236,7 @@ def _variant_product(matrix: MatrixConfig, coords: List[Tuple[int, int]]) -> Lis
                     "scale": float(scale),
                     "seed_strategy": str(seed_strategy),
                     "memory_type": str(memory_type),
+                    "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
                 }
             )
     return combos
@@ -325,7 +331,17 @@ def _hamming_weight_window(bits: np.ndarray, window_bits: int) -> Dict[str, Any]
     }
 
 
-def _generate_keystream(params: MemoryParams, coord: Tuple[int, int], nbytes: int, dt: float, warmup: int, quant_k: float, token_bytes: bytes, seed_strategy: str):
+def _generate_keystream(
+    params: MemoryParams,
+    coord: Tuple[int, int],
+    nbytes: int,
+    dt: float,
+    warmup: int,
+    quant_k: float,
+    token_bytes: bytes,
+    seed_strategy: str,
+    chaos_engine: str,
+):
     cache_key = (token_bytes, params.type, params.size, params.scale)
     cached = _FIELD_CACHE.get(cache_key)
     if cached is None:
@@ -333,7 +349,7 @@ def _generate_keystream(params: MemoryParams, coord: Tuple[int, int], nbytes: in
         _FIELD_CACHE[cache_key] = cached
     field, field_fp = cached
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-    ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k, chaos_engine=chaos_engine)
     return ks, field_fp
 
 
@@ -356,6 +372,7 @@ def _analyze_one(
         quant_k=variant["quant_k"],
         token_bytes=token_bytes,
         seed_strategy=variant["seed_strategy"],
+        chaos_engine=variant["chaos_engine"],
     )
 
     if cfg.validate.assert_deterministic_within_run:
@@ -368,6 +385,7 @@ def _analyze_one(
             quant_k=variant["quant_k"],
             token_bytes=token_bytes,
             seed_strategy=variant["seed_strategy"],
+            chaos_engine=variant["chaos_engine"],
         )
         if ks2 != ks:
             raise RuntimeError("Determinism check failed for analyze run.")
@@ -414,6 +432,7 @@ def _analyze_one(
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
         "memory_type": variant["memory_type"],
+        "chaos_engine": variant["chaos_engine"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp if cfg.output.include_field_fingerprint else None,
         "keystream_sha256": hashlib.sha256(ks).hexdigest() if cfg.output.include_keystream_sha256 else None,
@@ -478,6 +497,7 @@ def run_analyze(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["scale"],
             rec.get("seed_strategy"),
             rec.get("memory_type"),
+            rec.get("chaos_engine"),
         )
 
     records_sorted = sorted(records, key=sort_key)
@@ -497,6 +517,7 @@ CSV_FIELDS_BASE = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "keystream_sha256",
     "field_fingerprint",
     "token_fingerprint",

@@ -88,6 +88,7 @@ from chaoscrypto.orchestrator.pipeline import (
     generate_keystream,
     encrypt_bytes,
     decrypt_bytes,
+    list_chaos_engines,
 )
 from chaoscrypto.utils.logging import get_logger, resolve_log_level, set_command_context, setup_logging
 from chaoscrypto.cli.ui import (
@@ -163,6 +164,7 @@ def _resolve_analyze_profile_config(cfg: AnalyzeFullConfig) -> tuple[AnalyzeFull
                 scale=cfg.matrix.scale,
                 seed_strategy=cfg.matrix.seed_strategy,
                 memory_type=[profile_params.type],
+                chaos_engine=cfg.matrix.chaos_engine,
                 provided_memory_type=False,
             ),
             metrics=cfg.metrics,
@@ -238,6 +240,7 @@ def encrypt(
     dt: float = typer.Option(constants.DEFAULT_DT, help="Time step for Lorenz integration"),
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
+    chaos_engine: str = typer.Option(constants.CHAOS_ENGINE, "--chaos-engine", help="Chaos engine (lorenz|rossler)"),
     seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
     memory_type: str | None = typer.Option(None, "--memory-type", help="Memory type (must match profile)"),
     print_noise_preview: bool = typer.Option(False, "--print-noise-preview", help="Print a small noise field preview"),
@@ -284,6 +287,9 @@ def encrypt(
     if seed_strategy not in list_seed_strategies():
         typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    if chaos_engine not in list_chaos_engines():
+        typer.secho(f"Unknown chaos engine '{chaos_engine}'. Options: {list_chaos_engines()}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
     logger.info("Seed strategy=%s dt=%s warmup=%d quant_k=%s", seed_strategy, dt, warmup, quant_k)
     logger.debug("Memory field fingerprint=%s", field_fp)
 
@@ -296,6 +302,7 @@ def encrypt(
         dt=dt,
         warmup=warmup,
         quant_k=quant_k,
+        chaos_engine=chaos_engine,
     )
     assert computed_fp == field_fp  # sanity check
     logger.info("Input size=%d bytes", len(plaintext))
@@ -308,7 +315,7 @@ def encrypt(
 
     enc_payload = {
         "version": constants.VERSION,
-        "cipher": "lorenz",
+        "cipher": chaos_engine,
         "memory": {"type": params.type, "size": params.size, "scale": params.scale},
         "seed_strategy": {"name": seed_strategy, "params": {}},
         "sampling": {
@@ -400,6 +407,10 @@ def decrypt(
     if seed_strategy not in list_seed_strategies():
         typer.secho(f"Unknown seed strategy '{seed_strategy}' in enc.json.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    chaos_engine = str(enc_payload.get("cipher", constants.CHAOS_ENGINE))
+    if chaos_engine not in list_chaos_engines():
+        typer.secho(f"Unknown chaos engine '{chaos_engine}' in enc.json.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
     logger.info(
         "Loaded enc.json metadata memory_type=%s seed_strategy=%s coord=(%d,%d)",
         enc_memory.get("type", params.type),
@@ -432,7 +443,14 @@ def decrypt(
         raise typer.Exit(code=1)
     print_noise_excerpt(field, coord=coord_tuple, window=2)
     init_state = derive_initial_state(field, coord_tuple, seed_strategy=seed_strategy)
-    keystream = generate_keystream(len(ciphertext), init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    keystream = generate_keystream(
+        len(ciphertext),
+        init_state,
+        dt=dt,
+        warmup=warmup,
+        quant_k=quant_k,
+        chaos_engine=chaos_engine,
+    )
     plaintext = xor_bytes(ciphertext, keystream)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -467,6 +485,7 @@ def keystream(
     dt: float = typer.Option(constants.DEFAULT_DT, help="Time step for Lorenz integration"),
     warmup: int = typer.Option(constants.DEFAULT_WARMUP, help="Warmup iterations before sampling"),
     quant_k: float = typer.Option(constants.DEFAULT_QUANT_K, help="Quantization factor for sampling"),
+    chaos_engine: str = typer.Option(constants.CHAOS_ENGINE, "--chaos-engine", help="Chaos engine (lorenz|rossler)"),
     seed_strategy: str = typer.Option(constants.SEED_STRATEGY, "--seed-strategy", help="Seed strategy name"),
     memory_type: str = typer.Option(None, "--memory-type", help="Memory type override (must match profile)"),
     out: Path | None = typer.Option(None, "--out", "-o", help="Write raw keystream bytes to file"),
@@ -517,6 +536,9 @@ def keystream(
     if seed_strategy not in list_seed_strategies():
         typer.secho(f"Unknown seed strategy '{seed_strategy}'. Options: {list_seed_strategies()}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    if chaos_engine not in list_chaos_engines():
+        typer.secho(f"Unknown chaos engine '{chaos_engine}'. Options: {list_chaos_engines()}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     params = MemoryParams(type=memory_type, size=params.size, scale=params.scale)
     print_run_header(
@@ -543,19 +565,31 @@ def keystream(
     init_state = derive_initial_state(field, coord_tuple, seed_strategy=seed_strategy)
     if dump_trajectory or plot_trajectory:
         from chaoscrypto.core.chaos.lorenz import LorenzSystem
+        from chaoscrypto.core.chaos.rossler import RosslerSystem
         from chaoscrypto.core.sampling.quantize_byte import QuantizeByteSampling
         import csv
 
         total_steps = warmup + nbytes
-        system = LorenzSystem(
-            x=init_state[0],
-            y=init_state[1],
-            z=init_state[2],
-            dt=dt,
-            sigma=constants.LCL_SIGMA,
-            rho=constants.LCL_RHO,
-            beta=constants.LCL_BETA,
-        )
+        if chaos_engine == "lorenz":
+            system = LorenzSystem(
+                x=init_state[0],
+                y=init_state[1],
+                z=init_state[2],
+                dt=dt,
+                sigma=constants.LCL_SIGMA,
+                rho=constants.LCL_RHO,
+                beta=constants.LCL_BETA,
+            )
+        else:
+            system = RosslerSystem(
+                x=init_state[0],
+                y=init_state[1],
+                z=init_state[2],
+                dt=dt,
+                a=constants.RSL_A,
+                b=constants.RSL_B,
+                c=constants.RSL_C,
+            )
         sampler = QuantizeByteSampling(k=quant_k)
         trajectory = []
         ks_buf = bytearray()
@@ -593,7 +627,7 @@ def keystream(
             ax.set_xlabel("step")
             ax.set_ylabel("x")
             ax.set_title(
-                "Lorenz trajectory x over steps "
+                f"{chaos_engine} trajectory x over steps "
                 f"(dt={dt}, warmup={warmup}, coord={coord_tuple[0]},{coord_tuple[1]}, seed_strategy={seed_strategy})"
             )
             ax.legend(loc="best")
@@ -604,7 +638,14 @@ def keystream(
             print_io_write(plot_trajectory)
             typer.secho(f"Wrote trajectory plot → {plot_trajectory}", fg=typer.colors.GREEN)
     else:
-        ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+        ks = generate_keystream(
+            nbytes,
+            init_state,
+            dt=dt,
+            warmup=warmup,
+            quant_k=quant_k,
+            chaos_engine=chaos_engine,
+        )
     import hashlib
 
     ks_hash = hashlib.sha256(ks).hexdigest()
@@ -757,6 +798,7 @@ def benchmark(
                 scale=cfg.matrix.scale,
                 seed_strategy=cfg.matrix.seed_strategy,
                 memory_type=[profile_params.type],
+                chaos_engine=cfg.matrix.chaos_engine,
                 provided_memory_type=False,
             ),
             metrics=cfg.metrics,
@@ -772,6 +814,7 @@ def benchmark(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     run_count = variant_count * cfg.bench.repeats
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
@@ -814,7 +857,7 @@ def benchmark(
         [
             (
                 "coord=({coord_x},{coord_y}) repeat={repeat_index} dt={dt} warmup={warmup} quant_k={quant_k} "
-                "seed_strategy={seed_strategy} memory_type={memory_type} ks_sha256={keystream_sha256} "
+                "seed_strategy={seed_strategy} memory_type={memory_type} chaos_engine={chaos_engine} ks_sha256={keystream_sha256} "
                 "throughput_bps={throughput_keystream_bps}"
             ).format(**rec)
             for rec in records
@@ -882,6 +925,7 @@ def analyze(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
     coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
@@ -924,7 +968,7 @@ def analyze(
         [
             (
                 "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
-                "memory_type={memory_type} ks_sha256={keystream_sha256} bit_ones_ratio={bit_ones_ratio}"
+                "memory_type={memory_type} chaos_engine={chaos_engine} ks_sha256={keystream_sha256} bit_ones_ratio={bit_ones_ratio}"
             ).format(**rec)
             for rec in records
         ],
@@ -994,6 +1038,7 @@ def nist_batch(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
     coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
@@ -1034,7 +1079,7 @@ def nist_batch(
         [
             (
                 "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
-                "memory_type={memory_type} failed_count={nist_failed_count}"
+                "memory_type={memory_type} chaos_engine={chaos_engine} failed_count={nist_failed_count}"
             ).format(**rec)
             for rec in run_rows
         ],
@@ -1285,6 +1330,7 @@ def platform_check(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
     coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
@@ -1326,7 +1372,7 @@ def platform_check(
         [
             (
                 "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
-                "memory_type={memory_type} runtime={runtime_label} ks_sha256={keystream_sha256}"
+                "memory_type={memory_type} chaos_engine={chaos_engine} runtime={runtime_label} ks_sha256={keystream_sha256}"
             ).format(**rec)
             for rec in records
         ],
@@ -1458,6 +1504,7 @@ def avalanche(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
     coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
@@ -1505,7 +1552,7 @@ def avalanche(
         [
             (
                 "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
-                "memory_type={memory_type} perturb={perturbation_type}[{perturbation_bit_index}] hd_ratio={hamming_distance_ratio}"
+                "memory_type={memory_type} chaos_engine={chaos_engine} perturb={perturbation_type}[{perturbation_bit_index}] hd_ratio={hamming_distance_ratio}"
             ).format(**rec)
             for rec in records
         ],
@@ -1579,6 +1626,7 @@ def periodicity(
         * len(cfg.matrix.scale)
         * len(cfg.matrix.seed_strategy)
         * len(cfg.matrix.memory_type)
+        * len(cfg.matrix.chaos_engine)
     )
     seed_strategy_text = cfg.matrix.seed_strategy[0] if len(cfg.matrix.seed_strategy) == 1 else f"matrix[{len(cfg.matrix.seed_strategy)}]"
     coord_text = cfg.analyze.coords[0] if len(cfg.analyze.coords) == 1 else None
@@ -1628,7 +1676,7 @@ def periodicity(
         [
             (
                 "coord=({coord_x},{coord_y}) dt={dt} warmup={warmup} quant_k={quant_k} seed_strategy={seed_strategy} "
-                "memory_type={memory_type} repeated_chunks={repeated_chunk_hash_count} lag_ratio={lag_match_ratio} "
+                "memory_type={memory_type} chaos_engine={chaos_engine} repeated_chunks={repeated_chunk_hash_count} lag_ratio={lag_match_ratio} "
                 "detected_period={detected_prefix_period_bytes}"
             ).format(**rec)
             for rec in records

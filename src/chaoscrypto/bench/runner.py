@@ -63,6 +63,7 @@ class MatrixConfig:
     scale: Sequence[float]
     seed_strategy: Sequence[str]
     memory_type: Sequence[str]
+    chaos_engine: Sequence[str]
     provided_memory_type: bool
 
 
@@ -166,6 +167,7 @@ def parse_config(path: Path) -> FullConfig:
         scale=[float(x) for x in matrix.get("scale", [constants.DEFAULT_MEMORY_SCALE])],
         seed_strategy=[str(x) for x in seed_val],
         memory_type=[str(x) for x in mem_val],
+        chaos_engine=[str(x) for x in matrix.get("chaos_engine", [constants.CHAOS_ENGINE])],
         provided_memory_type=mem_provided,
     )
 
@@ -200,6 +202,9 @@ def parse_config(path: Path) -> FullConfig:
     for name in matrix_cfg.memory_type:
         if name not in list_memory_models():
             raise ConfigError(f"Unknown memory_type '{name}'. Available: {list_memory_models()}")
+    for name in matrix_cfg.chaos_engine:
+        if name not in ("lorenz", "rossler"):
+            raise ConfigError("Unknown chaos_engine '%s'. Available: ['lorenz', 'rossler']" % name)
 
     return FullConfig(
         bench=bench_cfg,
@@ -272,6 +277,7 @@ def _keystream_and_metrics(
     precomputed_field: Tuple[np.ndarray, str] | None = None,
     precomputed_field_time: float | None = None,
     seed_strategy: str = constants.SEED_STRATEGY,
+    chaos_engine: str = constants.CHAOS_ENGINE,
 ) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
 
@@ -301,6 +307,7 @@ def _keystream_and_metrics(
             dt=dt,
             warmup=warmup,
             quant_k=quant_k,
+            chaos_engine=chaos_engine,
         )
     )
 
@@ -311,6 +318,7 @@ def _keystream_and_metrics(
             dt=dt,
             warmup=warmup,
             quant_k=quant_k,
+            chaos_engine=chaos_engine,
         )
         if ks2 != ks:
             raise RuntimeError("Determinism check failed: keystream mismatch within run.")
@@ -390,8 +398,8 @@ def _keystream_and_metrics(
 
 def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
     combos = []
-    for dt, warmup, quant_k, size, scale, seed_strategy, memory_type in itertools.product(
-        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type
+    for dt, warmup, quant_k, size, scale, seed_strategy, memory_type, chaos_engine in itertools.product(
+        matrix.dt, matrix.warmup, matrix.quant_k, matrix.size, matrix.scale, matrix.seed_strategy, matrix.memory_type, matrix.chaos_engine
     ):
         seed_strategy = seed_strategy or constants.SEED_STRATEGY
         memory_type = memory_type or constants.MEMORY_TYPE
@@ -404,6 +412,7 @@ def _variant_product(matrix: MatrixConfig) -> List[Dict[str, Any]]:
                 "scale": float(scale),
                 "seed_strategy": str(seed_strategy),
                 "memory_type": str(memory_type),
+                "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
             }
         )
     return combos
@@ -463,6 +472,7 @@ def _run_single_variant(
         precomputed_field=precomputed_field,
         precomputed_field_time=precomputed_time,
         seed_strategy=variant["seed_strategy"],
+        chaos_engine=variant["chaos_engine"],
     )
 
     record: Dict[str, Any] = {
@@ -479,6 +489,7 @@ def _run_single_variant(
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
         "memory_type": variant["memory_type"],
+        "chaos_engine": variant["chaos_engine"],
         "keystream_sha256": ks_metrics["keystream_sha256"],
         "token_fingerprint": token_fp,
         "field_fingerprint": ks_metrics["field_fingerprint"],
@@ -543,6 +554,7 @@ def run_benchmark(config: FullConfig, jobs: int = 1) -> List[Dict[str, Any]]:
             rec["scale"],
             rec.get("seed_strategy"),
             rec.get("memory_type"),
+            rec.get("chaos_engine"),
             rec["repeat_index"],
         )
 
@@ -570,6 +582,7 @@ CSV_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "t_field_s",
     "t_seed_s",
     "t_keystream_s",

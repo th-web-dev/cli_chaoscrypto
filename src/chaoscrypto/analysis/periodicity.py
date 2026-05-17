@@ -37,6 +37,7 @@ PERIODICITY_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "token_fingerprint",
     "field_fingerprint",
     "keystream_sha256",
@@ -62,18 +63,20 @@ def _variant_product(config: FullConfig) -> List[Dict[str, Any]]:
                         for scale in config.matrix.scale:
                             for seed_strategy in config.matrix.seed_strategy:
                                 for memory_type in config.matrix.memory_type:
-                                    combos.append(
-                                        {
-                                            "coord": coord,
-                                            "dt": float(dt),
-                                            "warmup": int(warmup),
-                                            "quant_k": float(quant_k),
-                                            "size": int(size),
-                                            "scale": float(scale),
-                                            "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
-                                            "memory_type": str(memory_type or constants.MEMORY_TYPE),
-                                        }
-                                    )
+                                    for chaos_engine in config.matrix.chaos_engine:
+                                        combos.append(
+                                            {
+                                                "coord": coord,
+                                                "dt": float(dt),
+                                                "warmup": int(warmup),
+                                                "quant_k": float(quant_k),
+                                                "size": int(size),
+                                                "scale": float(scale),
+                                                "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
+                                                "memory_type": str(memory_type or constants.MEMORY_TYPE),
+                                                "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
+                                            }
+                                        )
     return combos
 
 
@@ -145,11 +148,25 @@ def _run_periodicity_one(
 
     field, field_fp = _get_field(token_bytes, params)
     init_state = derive_initial_state(field, variant["coord"], seed_strategy=variant["seed_strategy"])
-    ks = generate_keystream(config.analyze.nbytes, init_state, dt=variant["dt"], warmup=variant["warmup"], quant_k=variant["quant_k"])
+    ks = generate_keystream(
+        config.analyze.nbytes,
+        init_state,
+        dt=variant["dt"],
+        warmup=variant["warmup"],
+        quant_k=variant["quant_k"],
+        chaos_engine=variant["chaos_engine"],
+    )
 
     if config.validate.assert_deterministic_within_run:
         init_state_2 = derive_initial_state(field, variant["coord"], seed_strategy=variant["seed_strategy"])
-        ks2 = generate_keystream(config.analyze.nbytes, init_state_2, dt=variant["dt"], warmup=variant["warmup"], quant_k=variant["quant_k"])
+        ks2 = generate_keystream(
+            config.analyze.nbytes,
+            init_state_2,
+            dt=variant["dt"],
+            warmup=variant["warmup"],
+            quant_k=variant["quant_k"],
+            chaos_engine=variant["chaos_engine"],
+        )
         if ks2 != ks:
             raise RuntimeError("Determinism check failed during periodicity run.")
 
@@ -170,6 +187,7 @@ def _run_periodicity_one(
         "scale": variant["scale"],
         "seed_strategy": variant["seed_strategy"],
         "memory_type": variant["memory_type"],
+        "chaos_engine": variant["chaos_engine"],
         "token_fingerprint": token_fp,
         "field_fingerprint": field_fp,
         "keystream_sha256": hashlib.sha256(ks).hexdigest(),
@@ -240,6 +258,7 @@ def run_periodicity(
             rec["scale"],
             rec["seed_strategy"],
             rec["memory_type"],
+            rec["chaos_engine"],
         ),
     )
 

@@ -36,6 +36,7 @@ AVALANCHE_FIELDS = [
     "scale",
     "seed_strategy",
     "memory_type",
+    "chaos_engine",
     "perturbation_type",
     "perturbation_target",
     "perturbation_bit_index",
@@ -62,18 +63,20 @@ def _variant_product(config: FullConfig) -> List[Dict[str, Any]]:
                         for scale in config.matrix.scale:
                             for seed_strategy in config.matrix.seed_strategy:
                                 for memory_type in config.matrix.memory_type:
-                                    combos.append(
-                                        {
-                                            "coord": coord,
-                                            "dt": float(dt),
-                                            "warmup": int(warmup),
-                                            "quant_k": float(quant_k),
-                                            "size": int(size),
-                                            "scale": float(scale),
-                                            "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
-                                            "memory_type": str(memory_type or constants.MEMORY_TYPE),
-                                        }
-                                    )
+                                    for chaos_engine in config.matrix.chaos_engine:
+                                        combos.append(
+                                            {
+                                                "coord": coord,
+                                                "dt": float(dt),
+                                                "warmup": int(warmup),
+                                                "quant_k": float(quant_k),
+                                                "size": int(size),
+                                                "scale": float(scale),
+                                                "seed_strategy": str(seed_strategy or constants.SEED_STRATEGY),
+                                                "memory_type": str(memory_type or constants.MEMORY_TYPE),
+                                                "chaos_engine": str(chaos_engine or constants.CHAOS_ENGINE),
+                                            }
+                                        )
     return combos
 
 
@@ -122,10 +125,11 @@ def _generate_keystream_variant(
     quant_k: float,
     params: MemoryParams,
     seed_strategy: str,
+    chaos_engine: str,
 ) -> Tuple[bytes, str]:
     field, field_fp = _get_field(token_bytes, params)
     init_state = derive_initial_state(field, coord, seed_strategy=seed_strategy)
-    ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k)
+    ks = generate_keystream(nbytes, init_state, dt=dt, warmup=warmup, quant_k=quant_k, chaos_engine=chaos_engine)
     return ks, field_fp
 
 
@@ -201,6 +205,7 @@ def _run_avalanche_one(
         quant_k=variant["quant_k"],
         params=params,
         seed_strategy=variant["seed_strategy"],
+        chaos_engine=variant["chaos_engine"],
     )
     base_ks_sha = hashlib.sha256(base_ks).hexdigest()
 
@@ -229,6 +234,7 @@ def _run_avalanche_one(
                 "scale": variant["scale"],
                 "seed_strategy": variant["seed_strategy"],
                 "memory_type": variant["memory_type"],
+                "chaos_engine": variant["chaos_engine"],
                 "perturbation_type": p["type"],
                 "perturbation_target": p["target"],
                 "perturbation_bit_index": p["bit_index"],
@@ -255,6 +261,7 @@ def _run_avalanche_one(
             quant_k=variant["quant_k"],
             params=params,
             seed_strategy=variant["seed_strategy"],
+            chaos_engine=variant["chaos_engine"],
         )
         hd_bits = _hamming_distance_bits(base_ks, pert_ks)
         hd_ratio = hd_bits / (config.analyze.nbytes * 8) if config.analyze.nbytes > 0 else 0.0
@@ -272,6 +279,7 @@ def _run_avalanche_one(
             "scale": variant["scale"],
             "seed_strategy": variant["seed_strategy"],
             "memory_type": variant["memory_type"],
+            "chaos_engine": variant["chaos_engine"],
             "perturbation_type": p["type"],
             "perturbation_target": p["target"],
             "perturbation_bit_index": p["bit_index"],
@@ -331,6 +339,7 @@ def run_avalanche(
             rec["scale"],
             rec["seed_strategy"],
             rec["memory_type"],
+            rec["chaos_engine"],
             rec["perturbation_type"],
             rec["perturbation_bit_index"],
         ),

@@ -12,6 +12,7 @@ matrix:
   scale: [0.1]
   seed_strategy: ["neighborhood3", "window_mean_3x3"]
   memory_type: ["opensimplex", "perlin"]
+  chaos_engine: ["lorenz", "rossler"]
 
 metrics:
   bit_balance: false

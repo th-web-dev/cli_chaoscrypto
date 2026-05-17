@@ -35,7 +35,7 @@ def _to_int(val: Any) -> int | None:
 def _variant_key(row: Dict[str, str]) -> str:
     return (
         f"dt={row.get('dt')}|warmup={row.get('warmup')}|quant_k={row.get('quant_k')}|"
-        f"seed_strategy={row.get('seed_strategy')}|memory_type={row.get('memory_type')}"
+        f"seed_strategy={row.get('seed_strategy')}|memory_type={row.get('memory_type')}|chaos_engine={row.get('chaos_engine')}"
     )
 
 

@@ -9,6 +9,25 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+### Task 4.1: Rössler-Attraktor als zweite Chaos-Engine
+
+Technisch:
+- Eine zweite Chaossystem-Implementierung wurde ergänzt: `src/chaoscrypto/core/chaos/rossler.py`.
+- Die Keystream-Pipeline unterstützt jetzt Engine-Auswahl (`lorenz` oder `rossler`) über `chaos_engine` (Default bleibt `lorenz`).
+- Konfigurationsmatrix in Benchmark/Analyze-Workflows wurde um `chaos_engine` erweitert:
+- `src/chaoscrypto/bench/runner.py`
+- `src/chaoscrypto/analysis/runner.py`
+- sowie abgeleitete BA2-Workflows (`platform_divergence`, `avalanche`, `periodicity`, `nist_batch`).
+- Exporte enthalten jetzt `chaos_engine`, damit Ergebnisse beider Systeme direkt vergleichbar bleiben.
+- CLI-Kommandos `encrypt`, `decrypt`, `keystream` unterstützen `--chaos-engine`; `enc.json` speichert die verwendete Engine in `cipher`.
+- BA2-Beispielkonfigurationen wurden für Vergleichsszenarien auf beide Engines erweitert (`lorenz`, `rossler`).
+- Testabdeckung wurde angepasst/erweitert, inkl. Variationstest `chaos_engine` im Benchmark.
+
+BA-Relevanz:
+- Das Projekt kann nun dieselbe deterministische Rekonstruktionsidee auf zwei verschiedene chaotische Systeme anwenden.
+- Dadurch wird direkt messbar, ob die beobachteten Eigenschaften (Performance, Statistik, Sensitivität) Lorenz-spezifisch oder systemübergreifend sind.
+- Die BA2-Vergleichskapitel zu algorithmischer Diversität erhalten damit eine reproduzierbare experimentelle Grundlage.
+
 ### Task 5.1: Integritäts-Messreihe (HMAC) im Benchmark
 
 Technisch:
