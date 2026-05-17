@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from chaoscrypto.analysis.nist_validator import NIST_TEST_NAMES
+from chaoscrypto.analysis.usability import run_usability_eval
 from chaoscrypto.utils.records import normalize_record_memory_type
 from chaoscrypto.utils.logging import get_logger, set_command_context, setup_logging
 
@@ -228,6 +229,7 @@ def _render_markdown(
     analyze_aggs: List[AnalyzeAgg],
     bench_path: Path,
     analysis_path: Path,
+    usability_summary: Dict[str, Any] | None,
     timestamp: Optional[str],
     plots: List[str],
     report_dir: Path,
@@ -253,6 +255,8 @@ def _render_markdown(
     analysis_rel = _rel_path(analysis_path)
     lines.append(f"- Benchmark CSV: `{bench_rel}` ({len(bench_aggs)} variants aggregated)")
     lines.append(f"- Analyze CSV: `{analysis_rel}` ({len(analyze_aggs)} variants aggregated)")
+    if usability_summary is not None:
+        lines.append("- Usability CSV: included")
     lines.append("- Token: not stored; only fingerprints in source CSV")
     lines.append("")
 
@@ -404,6 +408,15 @@ def _render_markdown(
             pvals = [a.metrics.get(f"{pvalue_key}_mean") for a in analyze_aggs if a.metrics.get(f"{pvalue_key}_mean") is not None]
             mean_p = f"{sum(pvals) / len(pvals):.6f}" if pvals else ""
             lines.append(f"| {test_name} | {pass_count} | {fail_count} | {skip_count} | {mean_p} |")
+        lines.append("")
+
+    if usability_summary is not None:
+        lines.append("## Usability Summary")
+        lines.append(f"- Runs total: {usability_summary.get('runs_total')}")
+        lines.append(f"- Success rate: {usability_summary.get('success_rate')}")
+        lines.append(f"- Duration median/p95 (s): {usability_summary.get('duration_median_s')} / {usability_summary.get('duration_p95_s')}")
+        lines.append(f"- Reproducibility match rate: {usability_summary.get('repro_match_rate')} ({usability_summary.get('repro_checks')} checks)")
+        lines.append(f"- Mean failed attempts before success: {usability_summary.get('mean_failed_attempts_before_success')}")
         lines.append("")
 
     # Best candidates
@@ -667,6 +680,7 @@ def _plot_condensed_lines(
 def generate_report(
     bench_csv: Path,
     analysis_csv: Path,
+    usability_csv: Path | None,
     bench_json: Path | None,
     analysis_json: Path | None,
     out_md: Path,
@@ -682,6 +696,9 @@ def generate_report(
 
     bench_aggs = _group_bench(bench_rows)
     analyze_aggs = _group_analyze(analyze_rows)
+    usability_summary = None
+    if usability_csv:
+        usability_summary = run_usability_eval(usability_csv).get("summary")
     logger.debug("Report aggregation bench_variants=%d analyze_variants=%d", len(bench_aggs), len(analyze_aggs))
 
     timestamp = datetime.now(timezone.utc).isoformat() if include_timestamp else None
@@ -694,7 +711,7 @@ def generate_report(
             plot_refs.extend(_plot_condensed_mode(bench_aggs, analyze_aggs, plots_dir))
 
     report_dir = out_md.parent
-    md = _render_markdown(bench_aggs, analyze_aggs, bench_csv, analysis_csv, timestamp, plot_refs, report_dir)
+    md = _render_markdown(bench_aggs, analyze_aggs, bench_csv, analysis_csv, usability_summary, timestamp, plot_refs, report_dir)
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(md, encoding="utf-8")
 
@@ -703,6 +720,7 @@ def generate_report(
         "analyze_variants": len(analyze_aggs),
         "bench_csv": str(bench_csv),
         "analysis_csv": str(analysis_csv),
+        "usability_csv": str(usability_csv) if usability_csv else None,
         "timestamp": timestamp,
         "plots": plot_refs,
     }

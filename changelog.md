@@ -9,6 +9,26 @@ Jeder Eintrag enthält:
 
 ## 2026-05-16
 
+## 2026-05-17
+
+### Task 6.1: Usability-KPIs im Standard-Report integriert
+
+Technisch:
+- Die `report`-CLI akzeptiert jetzt optional `--usability-csv`.
+- `src/chaoscrypto/report/runner.py` integriert die Usability-Auswertung direkt über `run_usability_eval(...)` und rendert den Abschnitt `## Usability Summary` im Markdown-Report.
+- Zusätzlich werden zentrale KPIs ausgegeben:
+- `runs_total`
+- `success_rate`
+- `duration_median_s` / `duration_p95_s`
+- `repro_match_rate` inkl. Anzahl Checks
+- `mean_failed_attempts_before_success`
+- Die Testabdeckung wurde in `tests/test_report.py` erweitert:
+- neuer Testfall `test_report_with_usability_summary` prüft den vollständigen CLI-Pfad inklusive Report-Output.
+
+BA-Relevanz:
+- Usability ist damit nicht nur in separaten Artefakten (`usability-eval`, `ba2-eval`) sichtbar, sondern im Standard-Report gleichwertig neben Performance- und Statistikblöcken präsent.
+- Das erleichtert die konsistente Ergebnisdarstellung für BA2 und reduziert manuelle Nacharbeit beim Zusammenführen der drei Säulen Usability, Performance und Security.
+
 ### Task 7.1: BA2-Endkonsolidierung um Rekonstruktionsbefunde
 
 Technisch:

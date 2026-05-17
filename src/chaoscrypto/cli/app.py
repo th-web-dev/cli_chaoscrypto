@@ -1850,6 +1850,7 @@ def attractor_reconstruct(
 def report(
     bench_csv: Path = typer.Option(..., "--bench-csv", exists=True, readable=True, help="Benchmark CSV path"),
     analysis_csv: Path = typer.Option(..., "--analysis-csv", exists=True, readable=True, help="Analyze CSV path"),
+    usability_csv: Path | None = typer.Option(None, "--usability-csv", exists=True, readable=True, help="Optional usability CSV path"),
     out: Path = typer.Option(..., "--out", "-o", help="Output markdown report path"),
     bench_json: Path | None = typer.Option(None, "--bench-json", help="Optional benchmark JSON path"),
     analysis_json: Path | None = typer.Option(None, "--analysis-json", help="Optional analysis JSON path"),
@@ -1871,6 +1872,8 @@ def report(
     )
     print_io_read(bench_csv)
     print_io_read(analysis_csv)
+    if usability_csv:
+        print_io_read(usability_csv)
     if bench_json:
         print_io_read(bench_json)
     if analysis_json:
@@ -1886,6 +1889,7 @@ def report(
         summary = generate_report(
             bench_csv=bench_csv,
             analysis_csv=analysis_csv,
+            usability_csv=usability_csv,
             bench_json=bench_json,
             analysis_json=analysis_json,
             out_md=out,

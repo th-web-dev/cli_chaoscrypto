@@ -202,6 +202,45 @@ def _write_analysis_csv(path: Path):
         writer.writerows(rows)
 
 
+def _write_usability_csv(path: Path):
+    rows = [
+        {
+            "timestamp_utc": "2026-05-17T10:00:00Z",
+            "run_id": "r1",
+            "repro_key": "k1",
+            "command": "analyze",
+            "command_argv_json": "[]",
+            "arg_count": "0",
+            "flag_count": "0",
+            "duration_s": "1.0",
+            "exit_code": "0",
+            "success": "true",
+            "failed_attempts_before_success": "0",
+            "artifact_hashes_json": "{}",
+            "repro_match_previous": "",
+        },
+        {
+            "timestamp_utc": "2026-05-17T10:01:00Z",
+            "run_id": "r2",
+            "repro_key": "k1",
+            "command": "analyze",
+            "command_argv_json": "[]",
+            "arg_count": "0",
+            "flag_count": "0",
+            "duration_s": "2.0",
+            "exit_code": "1",
+            "success": "false",
+            "failed_attempts_before_success": "1",
+            "artifact_hashes_json": "{}",
+            "repro_match_previous": "false",
+        },
+    ]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def test_report_smoke(tmp_path):
     bench_csv = tmp_path / "bench.csv"
     analysis_csv = tmp_path / "analysis.csv"
@@ -244,6 +283,37 @@ def test_report_smoke(tmp_path):
     seed_mem_section = content.split("Top throughput per seed_strategy and memory_type:")[1].split("## Analyze Summary")[0]
     seed_mem_lines = [l for l in seed_mem_section.splitlines() if l.startswith("|") and not l.startswith("|---") and "seed_strategy" not in l and l.strip()]
     assert len(seed_mem_lines) == 4
+
+
+def test_report_with_usability_summary(tmp_path):
+    bench_csv = tmp_path / "bench.csv"
+    analysis_csv = tmp_path / "analysis.csv"
+    usability_csv = tmp_path / "usability.csv"
+    _write_bench_csv(bench_csv)
+    _write_analysis_csv(analysis_csv)
+    _write_usability_csv(usability_csv)
+    report_md = tmp_path / "report.md"
+    runner = CliRunner()
+    res = runner.invoke(
+        app,
+        [
+            "report",
+            "--bench-csv",
+            str(bench_csv),
+            "--analysis-csv",
+            str(analysis_csv),
+            "--usability-csv",
+            str(usability_csv),
+            "--out",
+            str(report_md),
+            "--no-timestamp",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    content = report_md.read_text()
+    assert "## Usability Summary" in content
+    assert "Runs total:" in content
+    assert "Success rate:" in content
 
 
 def test_report_plots(tmp_path):
