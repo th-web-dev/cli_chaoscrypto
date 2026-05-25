@@ -1,0 +1,16 @@
+domain,metric,value
+nist,variants_total,32
+nist,variants_with_any_fail,32
+nist,variants_fail_share,1.0
+nist,mean_passed_tests_per_variant,11.03125
+nist,core_tests_count_excluding_template,13
+nist,core_tests_with_any_fail_excluding_template,9
+avalanche,rows_evaluated,352
+avalanche,rows_skipped,32
+avalanche,mean_hamming_ratio,0.4999777390198274
+periodicity,variants_total,16
+periodicity,mean_lag_match_ratio,0.0039002063227634803
+periodicity,detected_prefix_period_variants,0
+reconstruction,variants_total,16
+reconstruction,mean_recon_r2,5.8118038459217813e-05
+reconstruction,mean_recon_rmse,0.5795946252466264

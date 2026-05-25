@@ -9,7 +9,7 @@ __pycache__/
 build/
 dist/
 
-out/
+out/ba2_rag_bundle
 
 .codex
 .DS_Store

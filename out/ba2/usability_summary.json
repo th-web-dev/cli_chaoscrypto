@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "runs_total": 1,
+    "runs_success": 1,
+    "runs_fail": 0,
+    "success_rate": 1.0,
+    "duration_median_s": 108.211240962999,
+    "duration_p95_s": 108.211240962999,
+    "repro_checks": 0,
+    "repro_match_rate": null,
+    "mean_failed_attempts_before_success": 0.0
+  },
+  "by_command": [
+    {
+      "command_name": "nist-batch",
+      "runs": 1,
+      "success_rate": 1.0,
+      "duration_median_s": 108.211240962999,
+      "duration_p95_s": 108.211240962999,
+      "mean_failed_attempts_before_success": 0.0
+    }
+  ]
+}

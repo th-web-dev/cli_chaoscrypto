@@ -1,0 +1,48 @@
+flowchart LR
+  %% Abb. 1 – Erweiterung der Systemarchitektur (BA1 -> BA2)
+
+  subgraph BA1["BA1 Kernsystem"]
+    direction TB
+    P["Profil/Token/Koordinate"]
+    M["Memory-Field"]
+    S["Seed-Strategie"]
+    C["Chaos-Engine"]
+    Q["Sampling"]
+    K["Keystream"]
+    X["Encrypt/Decrypt"]
+    P --> M --> S --> C --> Q --> K --> X
+  end
+
+  subgraph BA2["BA2 Erweiterungsmodule (Empirie)"]
+    direction TB
+    I["Analyse-Eingang"]
+    A["Analyze"]
+    N["NIST Batch"]
+    V["Avalanche"]
+    T["Periodizität"]
+    R["Rekonstruktion"]
+    U["Usability Eval"]
+    E["BA2 Eval (Konsolidierung)"]
+    O["Detaillierter Report"]
+
+    I --> A
+    I --> V
+    I --> T
+    I --> R
+    A --> N
+    A --> E
+    N --> E
+    V --> E
+    T --> E
+    R --> E
+    U --> E
+    E --> O
+  end
+
+  K --> I
+  X --> U
+
+  classDef core fill:#e9ecef,stroke:#495057,stroke-width:1px,color:#111;
+  classDef ext fill:#d1e7dd,stroke:#0f5132,stroke-width:1px,color:#0f5132;
+  class P,M,S,C,Q,K,X core;
+  class I,A,N,V,T,R,U,E,O ext;

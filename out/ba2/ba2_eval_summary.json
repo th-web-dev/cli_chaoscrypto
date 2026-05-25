@@ -1,0 +1,218 @@
+{
+  "nist": {
+    "variants_total": 32,
+    "variants_with_any_fail": 32,
+    "variants_fail_share": 1.0,
+    "mean_passed_tests_per_variant": 11.03125,
+    "mean_failed_tests_per_variant": 3.53125,
+    "core_tests_count_excluding_template": 13,
+    "core_tests_with_any_fail_excluding_template": 9,
+    "worst_tests": [
+      {
+        "test_name": "non_overlapping_template_matching",
+        "n_fail": 32,
+        "pass_rate": 0.0
+      },
+      {
+        "test_name": "overlapping_template_matching",
+        "n_fail": 32,
+        "pass_rate": 0.0
+      },
+      {
+        "test_name": "serial",
+        "n_fail": 12,
+        "pass_rate": 0.625
+      },
+      {
+        "test_name": "discrete_fourier_transform",
+        "n_fail": 8,
+        "pass_rate": 0.75
+      },
+      {
+        "test_name": "approximate_entropy",
+        "n_fail": 8,
+        "pass_rate": 0.75
+      }
+    ],
+    "fail_hotspots": {
+      "memory_type_top3": [
+        {
+          "group": "opensimplex",
+          "mean_failed_tests": 3.75
+        },
+        {
+          "group": "perlin",
+          "mean_failed_tests": 3.3125
+        }
+      ],
+      "seed_strategy_top3": [
+        {
+          "group": "neighborhood3",
+          "mean_failed_tests": 3.625
+        },
+        {
+          "group": "window_mean_3x3",
+          "mean_failed_tests": 3.4375
+        }
+      ],
+      "quant_k_top3": [
+        {
+          "group": "100000.0",
+          "mean_failed_tests": 4.875
+        },
+        {
+          "group": "10000000.0",
+          "mean_failed_tests": 2.1875
+        }
+      ],
+      "warmup_top3": [
+        {
+          "group": "1000",
+          "mean_failed_tests": 3.6875
+        },
+        {
+          "group": "100",
+          "mean_failed_tests": 3.375
+        }
+      ],
+      "dt_top3": [
+        {
+          "group": "0.01",
+          "mean_failed_tests": 3.53125
+        }
+      ]
+    }
+  },
+  "avalanche": {
+    "rows": 384,
+    "rows_evaluated": 352,
+    "rows_skipped": 32,
+    "mean_hamming_ratio": 0.4999777390198274,
+    "min_hamming_ratio": 0.4991121292114258,
+    "max_hamming_ratio": 0.5008206367492676,
+    "best_variants_top3": [
+      {
+        "variant": "dt=0.01|warmup=100|quant_k=100000.0|seed_strategy=window_mean_3x3|memory_type=opensimplex|chaos_engine=rossler",
+        "mean_hamming_ratio": 0.5000192685560747
+      },
+      {
+        "variant": "dt=0.01|warmup=1000|quant_k=100000.0|seed_strategy=window_mean_3x3|memory_type=perlin|chaos_engine=lorenz",
+        "mean_hamming_ratio": 0.500019832090898
+      },
+      {
+        "variant": "dt=0.01|warmup=100|quant_k=100000.0|seed_strategy=neighborhood3|memory_type=perlin|chaos_engine=lorenz",
+        "mean_hamming_ratio": 0.5000208507884633
+      }
+    ],
+    "worst_variants_top3": [
+      {
+        "variant": "dt=0.01|warmup=1000|quant_k=100000.0|seed_strategy=window_mean_3x3|memory_type=perlin|chaos_engine=rossler",
+        "mean_hamming_ratio": 0.4998994307084517
+      },
+      {
+        "variant": "dt=0.01|warmup=100|quant_k=100000.0|seed_strategy=window_mean_3x3|memory_type=opensimplex|chaos_engine=lorenz",
+        "mean_hamming_ratio": 0.49989745833657007
+      },
+      {
+        "variant": "dt=0.01|warmup=100|quant_k=100000.0|seed_strategy=window_mean_3x3|memory_type=perlin|chaos_engine=rossler",
+        "mean_hamming_ratio": 0.4998961795460094
+      }
+    ]
+  },
+  "periodicity": {
+    "variants_total": 16,
+    "mean_lag_match_ratio": 0.0039002063227634803,
+    "max_lag_match_ratio": 0.0039857153799019605,
+    "mean_repeated_chunk_hash_count": 0,
+    "max_repeated_chunk_hash_count": 0,
+    "detected_prefix_period_variants": 0
+  },
+  "reconstruction": {
+    "variants_total": 16,
+    "mean_recon_r2": 5.8118038459217813e-05,
+    "mean_recon_rmse": 0.5795946252466264,
+    "max_recon_r2": 0.00023133382611806308,
+    "engine_mean_recon_r2": {
+      "lorenz": -2.75445346968467e-05,
+      "rossler": 0.00014378061161528233
+    }
+  },
+  "usability": null,
+  "overview_rows": [
+    {
+      "domain": "nist",
+      "metric": "variants_total",
+      "value": 32
+    },
+    {
+      "domain": "nist",
+      "metric": "variants_with_any_fail",
+      "value": 32
+    },
+    {
+      "domain": "nist",
+      "metric": "variants_fail_share",
+      "value": 1.0
+    },
+    {
+      "domain": "nist",
+      "metric": "mean_passed_tests_per_variant",
+      "value": 11.03125
+    },
+    {
+      "domain": "nist",
+      "metric": "core_tests_count_excluding_template",
+      "value": 13
+    },
+    {
+      "domain": "nist",
+      "metric": "core_tests_with_any_fail_excluding_template",
+      "value": 9
+    },
+    {
+      "domain": "avalanche",
+      "metric": "rows_evaluated",
+      "value": 352
+    },
+    {
+      "domain": "avalanche",
+      "metric": "rows_skipped",
+      "value": 32
+    },
+    {
+      "domain": "avalanche",
+      "metric": "mean_hamming_ratio",
+      "value": 0.4999777390198274
+    },
+    {
+      "domain": "periodicity",
+      "metric": "variants_total",
+      "value": 16
+    },
+    {
+      "domain": "periodicity",
+      "metric": "mean_lag_match_ratio",
+      "value": 0.0039002063227634803
+    },
+    {
+      "domain": "periodicity",
+      "metric": "detected_prefix_period_variants",
+      "value": 0
+    },
+    {
+      "domain": "reconstruction",
+      "metric": "variants_total",
+      "value": 16
+    },
+    {
+      "domain": "reconstruction",
+      "metric": "mean_recon_r2",
+      "value": 5.8118038459217813e-05
+    },
+    {
+      "domain": "reconstruction",
+      "metric": "mean_recon_rmse",
+      "value": 0.5795946252466264
+    }
+  ]
+}

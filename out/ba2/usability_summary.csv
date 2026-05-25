@@ -1,0 +1,15 @@
+scope,metric,value
+overall,runs_total,1
+overall,runs_success,1
+overall,runs_fail,0
+overall,success_rate,1.0
+overall,duration_median_s,108.211240962999
+overall,duration_p95_s,108.211240962999
+overall,repro_checks,0
+overall,repro_match_rate,
+overall,mean_failed_attempts_before_success,0.0
+command:nist-batch,runs,1
+command:nist-batch,success_rate,1.0
+command:nist-batch,duration_median_s,108.211240962999
+command:nist-batch,duration_p95_s,108.211240962999
+command:nist-batch,mean_failed_attempts_before_success,0.0

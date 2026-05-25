@@ -1,0 +1,71 @@
+% Abb. 1 – Erweiterung der Systemarchitektur (BA1 -> BA2)
+% Nutzung in LaTeX:
+% 1) In der Präambel:
+%    \usepackage{tikz}
+%    \usetikzlibrary{arrows.meta,positioning,fit}
+% 2) Im Dokument:
+%    \input{docs/figures/ba2_architecture_tikz.tex}
+
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  font=\small,
+  >={Latex[length=2.2mm]},
+  line width=0.6pt,
+  core/.style={draw=black!60, fill=gray!12, rounded corners=2pt, align=center, minimum width=4.6cm, minimum height=0.95cm},
+  ext/.style={draw=black!60, fill=green!12, rounded corners=2pt, align=center, minimum width=4.6cm, minimum height=0.95cm},
+  title/.style={font=\bfseries\small, align=center},
+  link/.style={->, draw=black!75}
+]
+
+% --- BA1 (linke Spalte)
+\node[title] (t1) at (0,0.2) {BA1 Kernsystem};
+\node[core] (p) at (0,-1.3) {Profil / Token / Koordinate};
+\node[core] (m) at (0,-3.0) {Memory-Field};
+\node[core] (s) at (0,-4.7) {Seed-Strategie};
+\node[core] (c) at (0,-6.4) {Chaos-Engine};
+\node[core] (q) at (0,-8.1) {Sampling};
+\node[core] (k) at (0,-9.8) {Keystream};
+\node[core] (x) at (0,-11.5) {Encrypt / Decrypt};
+
+% --- BA2 (rechte Spalte)
+\node[title] (t2) at (9.8,0.2) {BA2 Erweiterungsmodule (Empirie)};
+\node[ext] (i) at (9.8,-1.3) {Analyse-Eingang};
+\node[ext] (a) at (9.8,-3.0) {Analyze};
+\node[ext] (n) at (5.8,-4.7) {NIST Batch};
+\node[ext] (v) at (9.8,-4.7) {Avalanche};
+\node[ext] (t) at (13.8,-4.7) {Periodizität};
+\node[ext] (r) at (9.8,-6.4) {Rekonstruktion};
+\node[ext] (u) at (9.8,-8.1) {Usability Eval};
+\node[ext] (e) at (9.8,-9.8) {BA2 Eval (Konsolidierung)};
+\node[ext] (o) at (9.8,-11.5) {Detaillierter Report};
+
+% --- Flüsse BA1
+\draw[link] (p) -- (m);
+\draw[link] (m) -- (s);
+\draw[link] (s) -- (c);
+\draw[link] (c) -- (q);
+\draw[link] (q) -- (k);
+\draw[link] (k) -- (x);
+
+% --- Übergang BA1 -> BA2
+\draw[link] (k.east) -- ++(1.0,0) |- (i.west);
+\draw[link] (x.east) -- ++(1.0,0) |- (u.west);
+
+% --- Flüsse BA2
+\draw[link] (i) -- (a);
+\draw[link] (a) -- (v);
+\draw[link] (a) -- (n);
+\draw[link] (a) -- (t);
+\draw[link] (v) -- (r);
+\draw[link] (n) -- (e);
+\draw[link] (v) -- (e);
+\draw[link] (t) -- (e);
+\draw[link] (r) -- (e);
+\draw[link] (u) -- (e);
+\draw[link] (e) -- (o);
+
+% --- Spaltenrahmen
+\node[draw=black!50, rounded corners=3pt, inner sep=4mm, fit=(t1)(x)] {};
+\node[draw=black!50, rounded corners=3pt, inner sep=4mm, fit=(t2)(o)(n)(t)] {};
+
+\end{tikzpicture}
